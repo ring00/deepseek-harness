@@ -14,6 +14,7 @@ import {
   IconChevronRightOutline14,
   MarkdownText,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MarkdownImageResolver } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import css from './MessageItem.module.css'
 
@@ -25,6 +26,10 @@ interface CompactionItemProps {
   fallbackSummary?: string | null
   /** The owning view's locale seat. */
   t: ChatViewSlotProps['t']
+  /** Session policy for Markdown image destinations. */
+  imageResolver?: MarkdownImageResolver | undefined
+  /** Stable identity for the summary owner. */
+  imageOwner: string
 }
 
 /**
@@ -36,6 +41,8 @@ export const CompactionItem = memo(function CompactionItem({
   node,
   title,
   fallbackSummary,
+  imageResolver,
+  imageOwner,
   t,
 }: CompactionItemProps) {
   const [expanded, setExpanded] = useState(false)
@@ -73,7 +80,13 @@ export const CompactionItem = memo(function CompactionItem({
         <span className={css.compactionSummary}>{summary}</span>
       </button>
       {open && node.summary !== null
-        && <div className={css.compactionBody}><MarkdownText text={node.summary} /></div>}
+        && <div className={css.compactionBody}>
+          <MarkdownText
+            text={node.summary}
+            imageResolver={imageResolver}
+            imageOwner={imageOwner}
+          />
+        </div>}
     </div>
   )
 })

@@ -12,6 +12,7 @@ import {
   MarkdownText,
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MarkdownImageResolver } from '@deepseek-ai/dsh-client-ui-primitives'
 import { structuredPatch } from 'diff'
 import type {
   AssistantRequestConfig, ConversationPromptSnapshot,
@@ -345,6 +346,8 @@ function AssistantTimingPanel({ metrics }: { metrics: AssistantMetricDetail }) {
 
 /** Props for the trajectory ledger. */
 export interface TrajectoryTableProps {
+  /** Session policy for Markdown image destinations in record details. */
+  imageResolver?: MarkdownImageResolver | undefined
   /** Session-global request numbers for the request groups visible in this context. */
   requestNumbers?: readonly TrajectoryRequestNumber[]
   /** Grouped records in display order. */
@@ -1033,15 +1036,23 @@ function MarkdownFragment({
   text,
   rendered,
   preview,
+  imageResolver,
+  imageOwner,
 }: {
   text: string
   rendered: boolean
   preview: boolean
+  imageResolver?: MarkdownImageResolver | undefined
+  imageOwner: string
 }) {
   if (rendered) {
     return (
       <div className={preview ? css.markdownPreview : css.markdownPayload}>
-        <MarkdownText text={text} />
+        <MarkdownText
+          text={text}
+          imageResolver={imageResolver}
+          imageOwner={imageOwner}
+        />
       </div>
     )
   }
@@ -1354,6 +1365,7 @@ function MarkdownRecordContent({
   thinkingExpanded,
   onThinkingExpandedChange,
   onOpenCall,
+  imageResolver,
 }: {
   record: TableRecord
   rendered: boolean
@@ -1361,7 +1373,10 @@ function MarkdownRecordContent({
   thinkingExpanded: boolean
   onThinkingExpandedChange: (expanded: boolean) => void
   onOpenCall: (callId: string) => void
+  imageResolver?: MarkdownImageResolver | undefined
 }) {
+  const imageOwner = `trajectory:${trajectoryRecordId(record.cell)}:content`
+  const imageProps = { imageResolver, imageOwner }
   if (!rendered && record.cell.sourceBlocks && record.cell.sourceBlocks.length > 0) {
     return <SourceBlocks blocks={record.cell.sourceBlocks} onOpenCall={onOpenCall} />
   }
@@ -1371,7 +1386,7 @@ function MarkdownRecordContent({
         record.cell.thinkingDetail,
         record.cell.outputDetail,
       ].filter((value): value is string => value !== undefined && value !== '').join('\n\n')
-      return <MarkdownFragment text={source} rendered={false} preview={preview} />
+      return <MarkdownFragment text={source} rendered={false} preview={preview} {...imageProps} />
     }
     return (
       <div className={`${css.assistantContent} ${css.assistantContentRendered}`}>
@@ -1395,6 +1410,7 @@ function MarkdownRecordContent({
               text={record.cell.thinkingDetail}
               rendered={rendered}
               preview={preview}
+              {...imageProps}
             />
           )}
         </div>
@@ -1404,6 +1420,7 @@ function MarkdownRecordContent({
               text={record.cell.outputDetail}
               rendered={rendered}
               preview={preview}
+              {...imageProps}
             />
           </div>
         )}
@@ -1430,11 +1447,11 @@ function MarkdownRecordContent({
     return <p className={css.noPayload}>{emptyLabel}</p>
   }
   if (!rendered || (!hasImages && !hasToolCalls)) {
-    return <MarkdownFragment text={source ?? ''} rendered={rendered} preview={preview} />
+    return <MarkdownFragment text={source ?? ''} rendered={rendered} preview={preview} {...imageProps} />
   }
   return (
     <div>
-      {source && <MarkdownFragment text={source} rendered preview={preview} />}
+      {source && <MarkdownFragment text={source} rendered preview={preview} {...imageProps} />}
       {record.cell.kind === 'message' && (
         <AssistantToolCalls
           blocks={record.cell.sourceBlocks}
@@ -1499,10 +1516,12 @@ function RecordPayload({
   record,
   direction,
   preview = false,
+  imageResolver,
 }: {
   record: TableRecord
   direction: 'input' | 'output'
   preview?: boolean
+  imageResolver?: MarkdownImageResolver | undefined
 }) {
   const value = direction === 'input' ? record.cell.inputDetail : record.cell.outputDetail
   const missing = direction === 'input'
@@ -1554,7 +1573,11 @@ function RecordPayload({
         error ? css.errorPayload : undefined,
       ].filter((className): className is string => className !== undefined).join(' ')}
       >
-        <MarkdownText text={value} />
+        <MarkdownText
+          text={value}
+          imageResolver={imageResolver}
+          imageOwner={`trajectory:${trajectoryRecordId(record.cell)}:${direction}`}
+        />
       </div>
     )
   }
@@ -1691,6 +1714,7 @@ function OverviewSection({
  * @returns The ledger and an optional local record inspector.
  */
 export function TrajectoryTable({
+  imageResolver,
   requestNumbers: sessionRequestNumbers,
   turns,
   streamingCells = [],
@@ -2839,7 +2863,11 @@ export function TrajectoryTable({
                 ? <p className={css.noPayload}>No system prompt in this request</p>
                 : (
                   <div className={`${css.markdownPayload} ${css.systemPrompt}`}>
-                    <MarkdownText text={selectedPrompt.system} />
+                    <MarkdownText
+                      text={selectedPrompt.system}
+                      imageResolver={imageResolver}
+                      imageOwner={`trajectory:${selected === undefined ? selectedRequest?.group ?? 'system' : trajectoryRecordId(selected.cell)}:system`}
+                    />
                   </div>
                 )
             )}
@@ -2881,6 +2909,7 @@ export function TrajectoryTable({
                       thinkingExpanded={thinkingExpanded}
                       onThinkingExpandedChange={setThinkingExpanded}
                       onOpenCall={openCallSummary}
+                      imageResolver={imageResolver}
                     />
                   </div>
                 )}
@@ -2994,6 +3023,7 @@ export function TrajectoryTable({
                             thinkingExpanded={thinkingExpanded}
                             onThinkingExpandedChange={setThinkingExpanded}
                             onOpenCall={openCallSummary}
+                            imageResolver={imageResolver}
                           />
                         </OverviewSection>
                       </>
@@ -3002,12 +3032,12 @@ export function TrajectoryTable({
                       <>
                         {selected.cell.inputDetail && (
                           <OverviewSection label="Payload" onOpen={() => { activateTab('input') }}>
-                            <RecordPayload record={selected} direction="input" preview />
+                            <RecordPayload record={selected} direction="input" preview imageResolver={imageResolver} />
                           </OverviewSection>
                         )}
                         {selected.cell.outputDetail && (
                           <OverviewSection label="Result" onOpen={() => { activateTab('output') }}>
-                            <RecordPayload record={selected} direction="output" preview />
+                            <RecordPayload record={selected} direction="output" preview imageResolver={imageResolver} />
                           </OverviewSection>
                         )}
                         <OverviewSection label="Schema" onOpen={() => { activateTab('schema') }}>
@@ -3040,6 +3070,7 @@ export function TrajectoryTable({
                 thinkingExpanded={thinkingExpanded}
                 onThinkingExpandedChange={setThinkingExpanded}
                 onOpenCall={openCallSummary}
+                imageResolver={imageResolver}
               />
             )}
             {!promptSelected && selected !== undefined && activeTab === 'raw' && (
@@ -3049,16 +3080,17 @@ export function TrajectoryTable({
                 thinkingExpanded={thinkingExpanded}
                 onThinkingExpandedChange={setThinkingExpanded}
                 onOpenCall={openCallSummary}
+                imageResolver={imageResolver}
               />
             )}
             {!promptSelected && selected !== undefined && activeTab === 'source' && (
               <MessageSource record={selected} />
             )}
             {!promptSelected && selected !== undefined && activeTab === 'input' && (
-              <RecordPayload record={selected} direction="input" />
+              <RecordPayload record={selected} direction="input" imageResolver={imageResolver} />
             )}
             {!promptSelected && selected !== undefined && activeTab === 'output' && (
-              <RecordPayload record={selected} direction="output" />
+              <RecordPayload record={selected} direction="output" imageResolver={imageResolver} />
             )}
             {!promptSelected && selected !== undefined && activeTab === 'schema' && (
               <RecordSchema record={selected} />

@@ -23,6 +23,7 @@ import {
   CodeBlock, DiffBlock, DisclosureRow, IconInspectOutline12, ReadBlock, SearchBlock, StateDot, TerminalBlock, WebBlock,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WebBlockProps } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MarkdownImageResolver } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { CHAT_DIFF_MAX_LINES, type DiffCardModel } from '../models/diff-card-model.ts'
 import { CHAT_READ_MAX_LINES, type ReadCardModel } from '../models/read-card-model.ts'
@@ -86,6 +87,10 @@ export interface ToolRowProps {
    * list or fetched-source card when present.
    */
   web?: WebBlockProps | null | undefined
+  /** Session policy for images inside a web answer. */
+  imageResolver?: MarkdownImageResolver | undefined
+  /** Stable tool-call owner for image imports. */
+  imageOwner?: string | undefined
   state: ToolRowState
   /**
    * Filesystem path from tool args; when set with onOpenFile, the summary
@@ -141,6 +146,8 @@ export function ToolRow({
   read,
   search,
   web,
+  imageResolver,
+  imageOwner,
   state,
   filePath,
   onOpenFile,
@@ -259,7 +266,14 @@ export function ToolRow({
                     </>
                   )
                   : webBody !== null
-                    ? <WebBlock {...webBody} className={css.webBody} />
+                    ? (
+                      <WebBlock
+                        {...webBody}
+                        className={css.webBody}
+                        imageResolver={imageResolver}
+                        imageOwner={imageOwner}
+                      />
+                    )
                     : (
                       <>
                         {variant === 'code' && body !== null && (

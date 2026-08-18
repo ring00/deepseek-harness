@@ -4,24 +4,29 @@
  * cache frozen blocks as React elements; the rendered DOM is pinned
  * byte-for-byte by `tests/fixtures/markdown-dom` and must not drift.
  *
- * Untrusted-output policy (unchanged from the replaced pipeline): link and
- * image destinations pass a protocol allowlist, images additionally require
- * absolute HTTP(S), raw HTML renders as literal text (no HTML enters the
- * DOM), and KaTeX runs without trusted commands. Fragment-anchor URLs fail
- * the allowlist, so footnote references and back-references render as plain
- * text rather than in-page links.
+ * Untrusted-output policy: links pass a protocol allowlist; images use the
+ * caller's asynchronous resolver when present and otherwise permit only
+ * absolute HTTP(S). Raw HTML renders as literal text (no HTML enters the DOM),
+ * and KaTeX runs without trusted commands. Fragment-anchor URLs fail the
+ * allowlist, so footnote references and back-references render as plain text
+ * rather than in-page links.
  *
  * Merge-extensible node unions fall through the documented default (render
  * nothing) rather than ending in assertNever: grammars registered elsewhere
  * may add node types this renderer has no mapping for.
  */
 
-import { Fragment, createElement } from 'react'
+import { Fragment, createElement, useEffect, useId, useState } from 'react'
 import type { Key, ReactNode } from 'react'
 import type * as Md from 'mdast'
 import type {} from 'mdast-util-math'
 import { normalizeUri } from 'micromark-util-sanitize-uri'
+import { IconWarningOutline16 } from '../icons/index.tsx'
+import { Tooltip } from '../Tooltip.tsx'
 import { CodeBlock } from './CodeBlock.tsx'
+import type {
+  MarkdownImageConfirmationReason, MarkdownImageLabels, MarkdownImageResolver,
+} from './images.ts'
 import { renderTexToReact } from './katex.tsx'
 import type { PositionedBlock } from './incremental.ts'
 import css from './MarkdownText.module.css'
@@ -59,6 +64,29 @@ function remoteImageUrl(url: string): string | undefined {
     // Same single failure mode as above: not an absolute URL.
     return undefined
   }
+}
+
+const DEFAULT_MARKDOWN_IMAGE_LABELS: MarkdownImageLabels = {
+  loading: 'Loading image',
+  unavailable: 'Image unavailable',
+  confirmation: 'Image requires confirmation',
+  potentialSecretDetails: 'This image URL may contain sensitive information. Activate to load it exactly as written.',
+  privateOriginDetails: 'This image points to a local or private network address. Activate to load it exactly as written.',
+}
+
+function confirmationDetails(
+  labels: MarkdownImageLabels,
+  reason: MarkdownImageConfirmationReason,
+): string {
+  switch (reason) {
+    case 'potential-secret': return labels.potentialSecretDetails
+    case 'private-origin': return labels.privateOriginDetails
+    default: return assertNever(reason)
+  }
+}
+
+function assertNever(value: never): never {
+  throw new Error(`unexpected Markdown image confirmation reason: ${String(value)}`)
 }
 
 /** Link/image reference targets collected from a document (first definition per identifier wins, as in CommonMark). */
@@ -125,6 +153,10 @@ export interface MarkdownRenderContext {
   readonly codeLabels: MarkdownCodeLabels | undefined
   /** Inline-code file mentions; absent wherever no opener vocabulary exists. */
   readonly fileMentions: MarkdownFileMentions | undefined
+  /** Session-bound image policy; absence keeps direct HTTP(S) behavior. */
+  readonly imageResolver?: MarkdownImageResolver | undefined
+  /** Stable owner supplied to the image policy. */
+  readonly imageOwner?: string | undefined
   /** Inside an anchor's children: interactive mentions must not nest there. */
   readonly inLink?: boolean
   /** Reference targets visible to this pass. */
@@ -279,7 +311,7 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
     case 'linkReference':
       return renderLinkReference(node, key, context)
     case 'image':
-      return renderImage(node.url, node.alt ?? '', key)
+      return renderImage(node.url, node.alt ?? '', key, context)
     case 'imageReference':
       return renderImageReference(node, key, context)
     case 'footnoteReference':
@@ -468,7 +500,125 @@ function inlineCodeHttpUrl(value: string): string | undefined {
   }
 }
 
-function renderImage(url: string, alt: string, key: Key): ReactNode {
+function ResolvedMarkdownImage({
+  source,
+  alt,
+  resolver,
+  owner,
+}: {
+  source: string
+  alt: string
+  resolver: MarkdownImageResolver
+  owner: string
+}): ReactNode {
+  const descriptionId = useId()
+  const [resolution, setResolution] = useState<
+    | { kind: 'remote'; url: string }
+    | { kind: 'attachment'; url: string }
+    | { kind: 'confirmation-required'; reason: 'potential-secret' | 'private-origin' }
+    | { kind: 'blocked' }
+    | null
+  >(null)
+  const [failed, setFailed] = useState(false)
+  const [approved, setApproved] = useState<{ source: string; owner: string } | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    let objectUrl: string | undefined
+    setResolution(null)
+    setFailed(false)
+    void resolver({ source, owner }, controller.signal)
+      .then((resolved) => {
+        if (controller.signal.aborted) return
+        if (resolved.kind === 'attachment') {
+          objectUrl = URL.createObjectURL(new Blob([new Uint8Array(resolved.data)], { type: resolved.mediaType }))
+          setResolution({ kind: 'attachment', url: objectUrl })
+          return
+        }
+        setResolution(resolved)
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true)
+      })
+    return () => {
+      controller.abort()
+      if (objectUrl !== undefined) URL.revokeObjectURL(objectUrl)
+    }
+  }, [source, owner, resolver])
+
+  const confirmed = approved?.source === source && approved.owner === owner
+  const labels = resolver.labels?.() ?? DEFAULT_MARKDOWN_IMAGE_LABELS
+  const src = resolution?.kind === 'remote' || resolution?.kind === 'attachment'
+    ? resolution.url
+    : resolution?.kind === 'confirmation-required' && confirmed
+      ? source
+      : undefined
+  if (src === undefined || failed) {
+    if (!failed && resolution?.kind === 'confirmation-required') {
+      const label = alt || labels.confirmation
+      const details = confirmationDetails(labels, resolution.reason)
+      return (
+        <>
+          <Tooltip
+            label={() => confirmationDetails(resolver.labels?.() ?? DEFAULT_MARKDOWN_IMAGE_LABELS, resolution.reason)}
+            side="bottom"
+            maxWidth={360}
+          >
+            <button
+              type="button"
+              className={css.imagePlaceholder}
+              data-image-state="confirmation-required"
+              data-image-reason={resolution.reason}
+              aria-label={label}
+              aria-describedby={descriptionId}
+              onClick={() => {
+                setFailed(false)
+                setApproved({ source, owner })
+              }}
+            >
+              <span aria-hidden="true"><IconWarningOutline16 size={24} /></span>
+              <span className={css.imagePlaceholderText}>{label}</span>
+            </button>
+          </Tooltip>
+          <span id={descriptionId} className={css.visuallyHidden}>{details}</span>
+        </>
+      )
+    }
+    const label = alt || (failed || resolution?.kind === 'blocked' ? labels.unavailable : labels.loading)
+    return (
+      <span
+        className={css.imagePlaceholder}
+        data-image-state={failed || resolution?.kind === 'blocked' ? 'error' : 'loading'}
+      >
+        <span aria-hidden="true"><IconWarningOutline16 size={24} /></span>
+        <span className={css.imagePlaceholderText}>{label}</span>
+      </span>
+    )
+  }
+  return (
+    <img
+      className={css.image}
+      src={src}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => { setFailed(true) }}
+    />
+  )
+}
+
+function renderImage(url: string, alt: string, key: Key, context: MarkdownRenderContext): ReactNode {
+  if (context.imageResolver !== undefined && context.imageOwner !== undefined) {
+    return (
+      <ResolvedMarkdownImage
+        key={key}
+        source={url}
+        alt={alt}
+        resolver={context.imageResolver}
+        owner={context.imageOwner}
+      />
+    )
+  }
   const imageSrc = remoteImageUrl(sanitizeUrl(normalizeUri(url)))
   if (imageSrc === undefined) {
     return <span key={key} className={css.imageAlt}>{alt}</span>
@@ -516,7 +666,7 @@ function renderImageReference(
 ): ReactNode {
   const definition = context.targets.definitions.get(node.identifier.toUpperCase())
   if (definition === undefined) return `![${node.alt ?? ''}${referenceSuffix(node)}`
-  return renderImage(definition.url, node.alt ?? '', key)
+  return renderImage(definition.url, node.alt ?? '', key, context)
 }
 
 function renderFootnoteReference(

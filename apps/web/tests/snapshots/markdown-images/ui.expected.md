@@ -12,8 +12,15 @@
   - img
 - heading "Markdown images" [level=2]
 - paragraph:
-  - img "Remote test image"
-- paragraph: Local test image
+  - img "Safe query image"
+- paragraph:
+  - button "Potential secret image"
+  - text: This image URL may contain sensitive information. Activate to load it exactly as written.
+- paragraph:
+  - button "Private origin image"
+  - text: This image points to a local or private network address. Activate to load it exactly as written.
+- paragraph:
+  - img "Local test image"
 - paragraph: REMOTE_IMAGE_DONE
 - button "Copy":
   - img

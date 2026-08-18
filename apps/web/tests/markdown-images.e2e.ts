@@ -1,8 +1,10 @@
-// Web e2e scenario: absolute HTTP(S) Markdown images. A validated session
-// assembled through the Session API is seeded cold into the real web
-// composition, then a separate image origin proves that the browser receives
-// a real network image while local-path Markdown remains inert alt text.
+// Web e2e scenario: automatic Markdown image policy. Trusted and untrusted
+// loopback origins plus a local workspace file prove exact URL preservation,
+// click confirmation, and immutable local replay.
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
@@ -30,8 +32,11 @@ const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/markdown-images', import
 const UI_EXPECTED = fileURLToPath(new URL('./snapshots/markdown-images/ui.expected.md', import.meta.url))
 const MODE = webSnapshotMode()
 const SEED_ID = 'markdown-images-web-e2e'
-const REMOTE_ALT = 'Remote test image'
+const SAFE_ALT = 'Safe query image'
+const SECRET_ALT = 'Potential secret image'
+const PRIVATE_ALT = 'Private origin image'
 const LOCAL_ALT = 'Local test image'
+const SECRET_DETAILS = 'This image URL may contain sensitive information. Activate to load it exactly as written.'
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64',
@@ -39,8 +44,12 @@ const PNG = Buffer.from(
 
 interface ImageOrigin {
   server: Server
-  url: string
+  origin: string
   requests: Array<{ path: string | undefined; referer: string | undefined }>
+}
+
+function suspiciousToken(): string {
+  return ['ghp', 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh1234'].join('_')
 }
 
 /** Start the deterministic remote image origin used by this browser scenario. */
@@ -65,7 +74,7 @@ async function startImageOrigin(): Promise<ImageOrigin> {
   }
   return {
     server,
-    url: `http://127.0.0.1:${String(address.port)}/image.png`,
+    origin: `http://127.0.0.1:${String(address.port)}`,
     requests,
   }
 }
@@ -80,13 +89,16 @@ async function stopServer(server: Server): Promise<void> {
   })
 }
 
-/** Build one closed, invariant-checked session fixture with remote and local image Markdown. */
-function markdownImageFixture(remoteUrl: string): string {
+/** Build one closed session fixture covering every policy branch. */
+function markdownImageFixture(trustedOrigin: string, untrustedOrigin: string): string {
   const session = Session.create(SessionId('markdown-image-source'))
   const eventTimeOrigin = new Date().setHours(12, 0, 0, 0)
   session.append('turn/start', { turn: 1 })
   const user = session.append('user/message', createUserMessage({
-    content: [{ type: 'text', text: 'Show the Markdown image policy.' }],
+    content: [{
+      type: 'text',
+      text: 'Show the Markdown image policy.',
+    }],
     source: { kind: 'user' },
   }), { surfaceOp: 'append' })
   session.append('session/title', {
@@ -105,7 +117,11 @@ function markdownImageFixture(remoteUrl: string): string {
         text: [
           '## Markdown images',
           '',
-          `![${REMOTE_ALT}](${remoteUrl})`,
+          `![${SAFE_ALT}](${trustedOrigin}/safe.png?signature=unchanged#preview)`,
+          '',
+          `![${SECRET_ALT}](${trustedOrigin}/secret.png?credential=${suspiciousToken()})`,
+          '',
+          `![${PRIVATE_ALT}](${untrustedOrigin}/private.png?signature=unchanged)`,
           '',
           `![${LOCAL_ALT}](./local-image.png)`,
           '',
@@ -139,17 +155,30 @@ function markdownImageFixture(remoteUrl: string): string {
   ].join('\n')
 }
 
-describe('web e2e: remote Markdown image rendering', () => {
+describe('web e2e: automatic Markdown image policy', () => {
   let scaffold: WebScaffold
-  let imageOrigin: ImageOrigin
+  let trustedOrigin: ImageOrigin
+  let untrustedOrigin: ImageOrigin
+  let overlayRoot: string
   let browser: Browser
   let page: Page
   let tripwire: ReturnType<typeof watchConsole>
 
   beforeAll(async () => {
-    imageOrigin = await startImageOrigin()
-    scaffold = await launchWebScaffold({})
-    await seedSession(scaffold, markdownImageFixture(imageOrigin.url), SEED_ID)
+    trustedOrigin = await startImageOrigin()
+    untrustedOrigin = await startImageOrigin()
+    overlayRoot = await mkdtemp(join(tmpdir(), 'dsh-markdown-images-e2e-'))
+    const overlay = join(overlayRoot, 'cordis.patch.yml')
+    await writeFile(overlay, [
+      '- id: ui-markdown-images',
+      '  config:',
+      '    trustedOrigins:',
+      `      - ${JSON.stringify(trustedOrigin.origin)}`,
+      '',
+    ].join('\n'))
+    scaffold = await launchWebScaffold({ extraOverlayPath: overlay })
+    await writeFile(join(scaffold.workspaceCwd, 'local-image.png'), PNG)
+    await seedSession(scaffold, markdownImageFixture(trustedOrigin.origin, untrustedOrigin.origin), SEED_ID)
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
@@ -160,10 +189,12 @@ describe('web e2e: remote Markdown image rendering', () => {
   afterAll(async () => {
     await browser?.close()
     await scaffold?.close()
-    await stopServer(imageOrigin.server)
+    await stopServer(trustedOrigin.server)
+    await stopServer(untrustedOrigin.server)
+    await rm(overlayRoot, { recursive: true, force: true })
   })
 
-  it.skipIf(MODE === 'record')('loads only the remote image and matches the conversation golden', async () => {
+  it.skipIf(MODE === 'record')('preserves safe URLs, confirms risky URLs, and replays a deleted local image', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-markdown-images'))
     const groupRow = page.locator('[role="treeitem"]').first()
     await groupRow.waitFor({ timeout: 15_000 })
@@ -175,34 +206,85 @@ describe('web e2e: remote Markdown image rendering', () => {
       timeout: 15_000,
     }).toBe(1)
 
-    const image = page.getByRole('img', { name: REMOTE_ALT })
-    await image.waitFor({ timeout: 10_000 })
-    await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth), {
-      timeout: 10_000,
-    }).toBeGreaterThan(0)
+    const loadedAlts = [SAFE_ALT, LOCAL_ALT]
+    for (const alt of loadedAlts) {
+      const image = page.getByRole('img', { name: alt })
+      await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth), {
+        timeout: 10_000,
+      }).toBeGreaterThan(0)
+    }
+    for (const alt of [SECRET_ALT, PRIVATE_ALT]) {
+      expect(await page.getByRole('img', { name: alt }).count()).toBe(0)
+      expect(await page.getByRole('button', { name: alt }).count()).toBe(1)
+    }
+    expect(untrustedOrigin.requests).toEqual([])
+    expect(trustedOrigin.requests).toEqual([
+      { path: '/safe.png?signature=unchanged', referer: undefined },
+    ])
+
+    const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
+      .split(SEED_ID).join('{{seededId}}')
+      .split(trustedOrigin.origin).join('{{trustedImageOrigin}}')
+      .split(untrustedOrigin.origin).join('{{untrustedImageOrigin}}')
+    await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
+
+    const secretConfirmation = page.getByRole('button', { name: SECRET_ALT })
+    const describedBy = await secretConfirmation.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    expect(await page.locator(`[id="${describedBy ?? ''}"]`).innerText()).toBe(SECRET_DETAILS)
+    await secretConfirmation.focus()
+    const tooltip = page.getByRole('tooltip', { name: SECRET_DETAILS, exact: true })
+    await tooltip.waitFor({ timeout: 5_000 })
+    expect(await tooltip.innerText()).toBe(SECRET_DETAILS)
+    await page.getByRole('button', { name: 'Copy' }).first().focus()
+    await secretConfirmation.hover()
+    await expect.poll(() => tooltip.innerText(), { timeout: 5_000 }).toBe(SECRET_DETAILS)
+    await secretConfirmation.focus()
+    await secretConfirmation.press('Enter')
+    await page.getByRole('button', { name: PRIVATE_ALT }).click()
+    for (const alt of [SECRET_ALT, PRIVATE_ALT]) {
+      await expect.poll(() => page.getByRole('img', { name: alt }).evaluate(
+        element => (element as HTMLImageElement).naturalWidth,
+      ), { timeout: 10_000 }).toBeGreaterThan(0)
+    }
+    expect(trustedOrigin.requests).toContainEqual({
+      path: `/secret.png?credential=${suspiciousToken()}`,
+      referer: undefined,
+    })
+    expect(untrustedOrigin.requests).toEqual([
+      { path: '/private.png?signature=unchanged', referer: undefined },
+    ])
+
+    const image = page.getByRole('img', { name: LOCAL_ALT })
     expect(await image.evaluate((element) => {
       const computed = getComputedStyle(element)
       return {
-        borderRadius: computed.borderRadius,
         decoding: element.getAttribute('decoding'),
         loading: element.getAttribute('loading'),
         maxWidth: computed.maxWidth,
         referrerPolicy: element.getAttribute('referrerpolicy'),
       }
     })).toEqual({
-      borderRadius: '8px',
       decoding: 'async',
       loading: 'lazy',
       maxWidth: '100%',
       referrerPolicy: 'no-referrer',
     })
-    expect(await page.getByRole('img', { name: LOCAL_ALT }).count()).toBe(0)
-    expect(await page.getByText(LOCAL_ALT, { exact: true }).count()).toBe(1)
-    expect(imageOrigin.requests).toEqual([{ path: '/image.png', referer: undefined }])
-
-    const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
-      .split(SEED_ID).join('{{seededId}}')
-    await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
+    await rm(join(scaffold.workspaceCwd, 'local-image.png'))
+    await page.reload({ waitUntil: 'load' })
+    await expect.poll(() => page.getByText('REMOTE_IMAGE_DONE', { exact: true }).count(), {
+      timeout: 15_000,
+    }).toBe(1)
+    await expect.poll(() => page.getByRole('img', { name: LOCAL_ALT }).evaluate(
+      element => (element as HTMLImageElement).naturalWidth,
+    ), { timeout: 10_000 }).toBeGreaterThan(0)
+    for (const alt of [SECRET_ALT, PRIVATE_ALT]) {
+      expect(await page.getByRole('img', { name: alt }).count()).toBe(0)
+      expect(await page.getByRole('button', { name: alt }).count()).toBe(1)
+    }
+    expect(untrustedOrigin.requests).toEqual([
+      { path: '/private.png?signature=unchanged', referer: undefined },
+    ])
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
     await assertFixtureInventory(SNAPSHOT_DIR, ['ui.expected.md'])

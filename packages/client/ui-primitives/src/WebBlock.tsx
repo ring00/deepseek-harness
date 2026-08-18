@@ -21,6 +21,7 @@
 
 import clsx from 'clsx'
 import { MarkdownText } from './markdown/MarkdownText.tsx'
+import type { MarkdownImageResolver } from './markdown/images.ts'
 import css from './WebBlock.module.css'
 
 /**
@@ -40,7 +41,14 @@ export interface WebSourceView {
 }
 
 /** A `web_search` card: an optional answer over a capped citation list. */
-export interface WebSearchBlockProps {
+interface WebMarkdownImageProps {
+  /** Session policy for Markdown images embedded in the provider answer. */
+  imageResolver?: MarkdownImageResolver | undefined
+  /** Stable tool-result owner for image imports. */
+  imageOwner?: string | undefined
+}
+
+export interface WebSearchBlockProps extends WebMarkdownImageProps {
   kind: 'search'
   /** The provider-generated answer, rendered as markdown above the sources. */
   answer?: string | undefined
@@ -53,7 +61,7 @@ export interface WebSearchBlockProps {
 }
 
 /** A `web_fetch` card: the retrieval summary for one fetched URL. */
-export interface WebFetchBlockProps {
+export interface WebFetchBlockProps extends WebMarkdownImageProps {
   kind: 'fetch'
   /** The final URL after allowed redirects; becomes a safe external link when http(s). */
   url: string
@@ -153,7 +161,9 @@ function SourceItem({ source, ordinal }: { source: WebSourceView; ordinal: numbe
  * @param props - see {@link WebSearchBlockProps}.
  * @returns the search card element.
  */
-function WebSearchBlock({ answer, sources, truncated, className }: WebSearchBlockProps) {
+function WebSearchBlock({
+  answer, sources, truncated, className, imageResolver, imageOwner,
+}: WebSearchBlockProps) {
   // A provider may legitimately return no answer and no sources; the chat WebRow
   // does not show the raw result content, so without this the user would see an
   // empty card. Mirror the backend's `No results found.` render text.
@@ -161,7 +171,13 @@ function WebSearchBlock({ answer, sources, truncated, className }: WebSearchBloc
   return (
     <div className={clsx(css.block, className)} data-web="search">
       {answer !== undefined && answer !== '' && (
-        <div className={css.answer}><MarkdownText text={answer} /></div>
+        <div className={css.answer}>
+          <MarkdownText
+            text={answer}
+            imageResolver={imageResolver}
+            imageOwner={imageOwner}
+          />
+        </div>
       )}
       {empty ? (
         <div className={css.empty}>未找到结果</div>

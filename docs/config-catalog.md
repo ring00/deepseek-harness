@@ -428,6 +428,22 @@ export interface Config {
 
 Source: [`packages/client/hmr/src/index.ts:31`](../packages/client/hmr/src/index.ts)
 
+<a id="deepseek-aidsh-client-ui-markdown-images"></a>
+
+## `@deepseek-ai/dsh-client-ui-markdown-images`
+
+Requires: `connection` · `sessions` · `fs` · `attachments`
+
+```ts config-catalog
+/** Deployment-owned Markdown image policy configuration. */
+export interface Config {
+  /** Exact private HTTP(S) origins allowed to load automatically. */
+  trustedOrigins?: string[]
+}
+```
+
+Source: [`packages/client/ui-markdown-images/src/index.ts:33`](../packages/client/ui-markdown-images/src/index.ts)
+
 <a id="deepseek-aidsh-code-runtime-worker-thread"></a>
 
 ## `@deepseek-ai/dsh-code-runtime-worker-thread`

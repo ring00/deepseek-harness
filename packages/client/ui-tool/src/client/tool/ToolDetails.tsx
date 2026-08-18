@@ -13,6 +13,7 @@ import css from './ToolDetails.module.css'
 interface ToolDetailsContentProps {
   block: ToolDetailsProps['block']
   cwd?: ToolDetailsProps['cwd']
+  markdownImageResolver?: ToolDetailsProps['markdownImageResolver']
   t: ToolDetailsProps['t']
 }
 
@@ -22,7 +23,7 @@ interface ToolDetailsContentProps {
  * @param props - selected call slice, workspace root, and locale seat.
  * @returns the details output body.
  */
-export function ToolDetails({ block, cwd, t }: ToolDetailsContentProps) {
+export function ToolDetails({ block, cwd, markdownImageResolver, t }: ToolDetailsContentProps) {
   const terminal = terminalCardModel(block, cwd)
   if (terminal !== null) {
     return (
@@ -52,7 +53,12 @@ export function ToolDetails({ block, cwd, t }: ToolDetailsContentProps) {
     const body = 'kind' in block ? resultText(block) : ''
     return (
       <>
-        <WebBlock {...web} className={css.web} />
+        <WebBlock
+          {...web}
+          className={css.web}
+          imageResolver={markdownImageResolver}
+          imageOwner={`tool:${block.callId}`}
+        />
         {body !== '' ? <pre className={css.code}>{body}</pre> : null}
       </>
     )

@@ -119,7 +119,7 @@ function addUsage(
 
 export function TrajectoryView({
   useSession, useDuration, loadOlder, setActualDuration,
-  inspect, onInspectDone, t,
+  inspect, onInspectDone, markdownImageResolver, t,
 }: ConvViewProps & InjectFace<TrajectoryViewInjected> & PropsLocale<'trajectory'>) {
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(EMPTY_TURN_IDS)
   const [collapsedAssistants, setCollapsedAssistants] =
@@ -478,6 +478,7 @@ export function TrajectoryView({
       />
       <div className={css.ledger}>
         <TrajectoryTable
+          imageResolver={markdownImageResolver}
           requestNumbers={requestNumbers}
           turns={timelineTurns}
           streamingCells={streamingCells}

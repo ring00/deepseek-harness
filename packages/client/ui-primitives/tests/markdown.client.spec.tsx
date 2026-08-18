@@ -1,11 +1,21 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { JsonBlock, MarkdownText, MessageText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { cjkFriendlyStrong } from '../src/markdown/cjkFriendlyStrong.ts'
 import { mathCompatibility } from '../src/markdown/mathCompatibility.ts'
 
-afterEach(cleanup)
+const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
+const originalRevokeObjectURL = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL')
+
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+  if (originalCreateObjectURL === undefined) Reflect.deleteProperty(URL, 'createObjectURL')
+  else Object.defineProperty(URL, 'createObjectURL', originalCreateObjectURL)
+  if (originalRevokeObjectURL === undefined) Reflect.deleteProperty(URL, 'revokeObjectURL')
+  else Object.defineProperty(URL, 'revokeObjectURL', originalRevokeObjectURL)
+})
 
 describe('MessageText', () => {
   it('renders the text verbatim', () => {
@@ -238,7 +248,7 @@ describe('MarkdownText', () => {
     expect(screen.getByRole('button', { name: 'Copy code' })).toBeTruthy()
   })
 
-  it('renders absolute HTTP(S) images with bounded presentation', () => {
+  it('renders absolute HTTP(S) images directly when no policy plugin is present', () => {
     const markdown = [
       '![secure diagram](https://example.com/secure.png)',
       '![plain diagram](http://example.com/plain.png)',
@@ -254,6 +264,202 @@ describe('MarkdownText', () => {
       expect(image.getAttribute('decoding')).toBe('async')
       expect(image.getAttribute('referrerpolicy')).toBe('no-referrer')
     }
+  })
+
+  it('resolves policy-controlled images automatically with loading and error alt text', async () => {
+    let finish: ((value: { kind: 'remote'; url: string }) => void) | undefined
+    const resolver = vi.fn(() => new Promise<{ kind: 'remote'; url: string }>((resolve) => { finish = resolve }))
+    const { container } = render(
+      <MarkdownText
+        text="![diagram](./diagram.png)"
+        imageResolver={resolver}
+        imageOwner="assistant:one"
+      />,
+    )
+    expect(container.querySelector('[data-image-state="loading"]')?.textContent).toBe('diagram')
+    expect(container.querySelector('button')).toBeNull()
+    finish?.({ kind: 'remote', url: 'https://cdn.example/diagram.png' })
+    await waitFor(() => {
+      expect(container.querySelector('img')?.getAttribute('src')).toBe('https://cdn.example/diagram.png')
+    })
+    expect(resolver).toHaveBeenCalledWith({
+      source: './diagram.png', owner: 'assistant:one',
+    }, expect.any(AbortSignal))
+
+    fireEvent.error(container.querySelector('img') as HTMLImageElement)
+    expect(container.querySelector('[data-image-state="error"]')?.textContent).toBe('diagram')
+  })
+
+  it('loads a confirmation-required URL only after clicking its placeholder', async () => {
+    const source = 'https://cdn.example/image.png?credential=suspicious'
+    const resolver = vi.fn(() => Promise.resolve({
+      kind: 'confirmation-required' as const,
+      reason: 'potential-secret' as const,
+    }))
+    const { container } = render(
+      <MarkdownText
+        text={`![blocked diagram](${source})`}
+        imageResolver={resolver}
+        imageOwner="assistant:confirm"
+      />,
+    )
+
+    const button = await waitFor(() => screen.getByRole('button', { name: 'blocked diagram' }))
+    expect(button.getAttribute('type')).toBe('button')
+    expect(button.getAttribute('data-image-reason')).toBe('potential-secret')
+    const description = document.getElementById(button.getAttribute('aria-describedby') ?? '')
+    expect(description?.textContent).toBe(
+      'This image URL may contain sensitive information. Activate to load it exactly as written.',
+    )
+    expect(container.querySelector('img')).toBeNull()
+    fireEvent.click(button)
+    expect(container.querySelector('img')?.getAttribute('src')).toBe(source)
+    expect(resolver).toHaveBeenCalledOnce()
+  })
+
+  it('uses localized fallback copy for empty alt text and exposes details on hover and focus', async () => {
+    const source = 'http://127.0.0.1/private.png'
+    const labels = {
+      loading: 'Loading localized image',
+      unavailable: 'Localized image unavailable',
+      confirmation: 'Confirm localized image',
+      potentialSecretDetails: 'Localized secret warning',
+      privateOriginDetails: 'Localized private-address warning',
+    }
+    const resolver = Object.assign(vi.fn(() => Promise.resolve({
+      kind: 'confirmation-required' as const,
+      reason: 'private-origin' as const,
+    })), { labels: () => labels })
+    const { container } = render(
+      <MarkdownText
+        text={`![](${source})`}
+        imageResolver={resolver}
+        imageOwner="assistant:empty-alt"
+      />,
+    )
+
+    const button = await waitFor(() => screen.getByRole('button', { name: 'Confirm localized image' }))
+    expect(button.textContent).toBe('Confirm localized image')
+    expect(container.textContent).not.toContain(source)
+    const description = document.getElementById(button.getAttribute('aria-describedby') ?? '')
+    expect(description?.textContent).toBe('Localized private-address warning')
+
+    fireEvent.mouseEnter(button)
+    expect(screen.getByRole('tooltip').textContent).toBe('Localized private-address warning')
+    fireEvent.mouseLeave(button)
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    fireEvent.focus(button)
+    expect(screen.getByRole('tooltip').textContent).toBe('Localized private-address warning')
+  })
+
+  it('clears an image confirmation when the authored source or owner changes', async () => {
+    const resolver = vi.fn(() => Promise.resolve({
+      kind: 'confirmation-required' as const,
+      reason: 'private-origin' as const,
+    }))
+    const rendered = render(
+      <MarkdownText
+        text="![private](http://127.0.0.1/one.png)"
+        imageResolver={resolver}
+        imageOwner="assistant:private"
+      />,
+    )
+    fireEvent.click(await waitFor(() => screen.getByRole('button', { name: 'private' })))
+    expect(rendered.container.querySelector('img')?.getAttribute('src')).toBe('http://127.0.0.1/one.png')
+
+    rendered.rerender(
+      <MarkdownText
+        text="![private](http://127.0.0.1/two.png)"
+        imageResolver={resolver}
+        imageOwner="assistant:private"
+      />,
+    )
+    await waitFor(() => {
+      expect(rendered.container.querySelector('[data-image-state="confirmation-required"]')).not.toBeNull()
+    })
+    expect(rendered.container.querySelector('img')).toBeNull()
+    expect(resolver).toHaveBeenCalledTimes(2)
+
+    fireEvent.click(screen.getByRole('button', { name: 'private' }))
+    expect(rendered.container.querySelector('img')?.getAttribute('src')).toBe('http://127.0.0.1/two.png')
+    rendered.rerender(
+      <MarkdownText
+        text="![private](http://127.0.0.1/two.png)"
+        imageResolver={resolver}
+        imageOwner="assistant:other"
+      />,
+    )
+    await waitFor(() => {
+      expect(rendered.container.querySelector('[data-image-state="confirmation-required"]')).not.toBeNull()
+    })
+    expect(rendered.container.querySelector('img')).toBeNull()
+    expect(resolver).toHaveBeenCalledTimes(3)
+  })
+
+  it('renders a hard block as a non-interactive image placeholder', async () => {
+    const resolver = vi.fn(() => Promise.resolve({ kind: 'blocked' as const }))
+    const { container } = render(
+      <MarkdownText
+        text="![unsafe](javascript:alert(1))"
+        imageResolver={resolver}
+        imageOwner="assistant:unsafe"
+      />,
+    )
+    await waitFor(() => {
+      expect(container.querySelector('[data-image-state="error"]')?.textContent).toBe('unsafe')
+    })
+    expect(container.querySelector('button')).toBeNull()
+    expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('aborts an unmounted resolution and revokes attachment object URLs', async () => {
+    const createObjectURL = vi.fn(() => 'blob:markdown-image')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL })
+    let signal: AbortSignal | undefined
+    const pending = vi.fn((_request, activeSignal: AbortSignal) => {
+      signal = activeSignal
+      return Promise.resolve({
+        kind: 'attachment' as const,
+        attachmentId: 'sha256:test',
+        mediaType: 'image/png' as const,
+        data: Uint8Array.of(1, 2, 3),
+      })
+    })
+    const rendered = render(
+      <MarkdownText text="![local](./local.png)" imageResolver={pending} imageOwner="assistant:local" />,
+    )
+    await waitFor(() => { expect(rendered.container.querySelector('img')?.getAttribute('src')).toBe('blob:markdown-image') })
+    rendered.unmount()
+    expect(signal?.aborted).toBe(true)
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:markdown-image')
+  })
+
+  it('keeps a resolved streaming image mounted across appended text', async () => {
+    const resolver = vi.fn(() => Promise.resolve({
+      kind: 'remote' as const, url: 'https://cdn.example/stable.png',
+    }))
+    const rendered = render(
+      <MarkdownText
+        text="![stable](https://cdn.example/stable.png)\n\none"
+        streaming
+        imageResolver={resolver}
+        imageOwner="assistant:stream"
+      />,
+    )
+    await waitFor(() => { expect(rendered.container.querySelector('img')).not.toBeNull() })
+    const image = rendered.container.querySelector('img')
+    rendered.rerender(
+      <MarkdownText
+        text="![stable](https://cdn.example/stable.png)\n\none\n\ntwo"
+        streaming
+        imageResolver={resolver}
+        imageOwner="assistant:stream"
+      />,
+    )
+    expect(rendered.container.querySelector('img')).toBe(image)
+    expect(resolver).toHaveBeenCalledOnce()
   })
 
   it('neutralizes raw HTML, unsafe or relative links, and unsupported images', () => {

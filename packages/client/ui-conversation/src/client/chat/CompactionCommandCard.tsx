@@ -4,21 +4,26 @@
 // complete handler-authored text.
 
 import type { ChatViewSlotProps, CommandRowOwnerProps } from '../contract/slots.ts'
+import type { MarkdownImageResolver } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CompactionItem } from './CompactionItem.tsx'
 import { GenericCommandCard } from './GenericCommandCard.tsx'
 
 interface CompactionCommandCardProps extends CommandRowOwnerProps {
   t: ChatViewSlotProps['t']
+  imageResolver?: MarkdownImageResolver | undefined
+  imageOwner: string
 }
 
 /** Render one manual compaction lifecycle without duplicating its checkpoint marker. */
-export function CompactionCommandCard({ node, compaction, t }: CompactionCommandCardProps) {
+export function CompactionCommandCard({ node, compaction, imageResolver, imageOwner, t }: CompactionCommandCardProps) {
   if (compaction !== undefined) {
     return (
       <CompactionItem
         node={compaction}
         title="compact"
         fallbackSummary={node.outcome?.text ?? null}
+        imageResolver={imageResolver}
+        imageOwner={imageOwner}
         t={t}
       />
     )

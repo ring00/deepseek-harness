@@ -9,6 +9,7 @@ import {
   IconApiOutline14, IconBrowseOutline16, IconCodeOutline16, IconEditOutline16, IconSearchOutline16, IconSparkle16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ToolCallOwnerProps, ToolTreeProps } from '../../contract/slots.ts'
+import type { MarkdownImageResolver } from '@deepseek-ai/dsh-client-ui-primitives'
 import { readCardModel } from '../models/read-card-model.ts'
 import { diffCardModel } from '../models/diff-card-model.ts'
 import { searchCardModel } from '../models/search-card-model.ts'
@@ -31,9 +32,12 @@ const VARIANT_ICONS: Record<ToolRowVariant, ReactNode> = {
 /** Card props: the owner payload plus the render site's locale seat (plain prop). */
 export interface GenericToolCardProps extends ToolCallOwnerProps {
   t: ToolTreeProps['t']
+  imageResolver?: MarkdownImageResolver | undefined
 }
 
-export function GenericToolCard({ toolName, block, cwd, openFile, inspect, t }: GenericToolCardProps) {
+export function GenericToolCard({
+  callId, toolName, block, cwd, openFile, inspect, imageResolver, t,
+}: GenericToolCardProps) {
   const model = toolRowModel(toolName, block, cwd)
   const terminal = terminalCardModel(block, cwd)
   const read = readCardModel(block, cwd)
@@ -68,6 +72,8 @@ export function GenericToolCard({ toolName, block, cwd, openFile, inspect, t }: 
       read={read}
       search={search}
       web={web}
+      imageResolver={imageResolver}
+      imageOwner={`tool:${callId}`}
       state={state}
       filePath={model.filePath}
       onOpenFile={singleFile ? openFile : undefined}

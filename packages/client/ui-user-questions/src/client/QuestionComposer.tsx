@@ -64,11 +64,29 @@ export function QuestionComposer(props: QuestionComposerProps) {
   const question = useMemo(() => new PendingQuestion(props.matched), [props.matched])
   const review = useMemo(() => planReviewOf(question.questions), [question])
   return review === undefined
-    ? <QuestionFlow key={question.key} pending={question} t={props.t} />
-    : <PlanReviewPanel key={question.key} pending={question} review={review} t={props.t} />
+    ? (
+      <QuestionFlow
+        key={question.key}
+        pending={question}
+        imageResolver={props.markdownImageResolver}
+        t={props.t}
+      />
+    )
+    : (
+      <PlanReviewPanel
+        key={question.key}
+        pending={question}
+        review={review}
+        imageResolver={props.markdownImageResolver}
+        t={props.t}
+      />
+    )
 }
 
-function QuestionFlow({ pending, t }: { pending: PendingQuestion } & Pick<QuestionComposerProps, 't'>) {
+function QuestionFlow({
+  pending, imageResolver, t,
+}: { pending: PendingQuestion; imageResolver: QuestionComposerProps['markdownImageResolver'] }
+  & Pick<QuestionComposerProps, 't'>) {
   const questions = pending.questions
   const [index, setIndex] = useState(0)
   const [drafts, setDrafts] = useState<DraftAnswer[]>(() => questions.map(() => ({
@@ -235,7 +253,13 @@ function QuestionFlow({ pending, t }: { pending: PendingQuestion } & Pick<Questi
           <>
             <div className={css.body} data-question-scroll>
               {question.detail !== undefined && (
-                <div className={css.detail}><MarkdownText text={question.detail} /></div>
+                <div className={css.detail}>
+                  <MarkdownText
+                    text={question.detail}
+                    imageResolver={imageResolver}
+                    imageOwner={`question:${pending.key}:${question.id}`}
+                  />
+                </div>
               )}
               <div className={css.options} role={question.multiSelect === true ? 'group' : 'radiogroup'}>
                 {(question.options ?? []).map((option, optionIndex) => {

@@ -14,6 +14,7 @@
 import { memo, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { IncrementalMarkdownParser } from './incremental.ts'
+import type { MarkdownImageResolver } from './images.ts'
 import { parseGfm, parseGfmWithMath } from './parse.ts'
 import {
   collectReferenceTargets, createReferenceTargets, renderBlocks, renderFootnoteSection,
@@ -23,6 +24,10 @@ import type { MarkdownCodeLabels, MarkdownFileMentions, MarkdownRenderContext, R
 import 'katex/dist/katex.min.css'
 import css from './MarkdownText.module.css'
 
+export type {
+  MarkdownImageConfirmationReason, MarkdownImageLabels, MarkdownImageRequest,
+  MarkdownImageResolution, MarkdownImageResolver,
+} from './images.ts'
 export type { MarkdownCodeLabels, MarkdownFileMentions } from './render.tsx'
 
 /** One settled full render: parse with math, resolve references, append the footnote section. */
@@ -30,6 +35,8 @@ function renderSettled(
   text: string,
   codeLabels: MarkdownCodeLabels | undefined,
   fileMentions: MarkdownFileMentions | undefined,
+  imageResolver: MarkdownImageResolver | undefined,
+  imageOwner: string | undefined,
 ): ReactNode[] {
   const root = parseGfmWithMath(text)
   const targets = createReferenceTargets()
@@ -38,6 +45,8 @@ function renderSettled(
     streaming: false,
     codeLabels,
     fileMentions,
+    imageResolver,
+    imageOwner,
     targets,
     footnoteOrder: [],
     footnoteCounts: new Map(),
@@ -68,7 +77,11 @@ class StreamingRenderer {
   private lastRendered: ReactNode[] = []
 
   /** @param codeLabels - Fence copy labels baked into cached elements; the owner replaces the renderer when they change. */
-  constructor(private readonly codeLabels: MarkdownCodeLabels | undefined) {}
+  constructor(
+    private readonly codeLabels: MarkdownCodeLabels | undefined,
+    private readonly imageResolver: MarkdownImageResolver | undefined,
+    private readonly imageOwner: string | undefined,
+  ) {}
 
   /**
    * Render the current accumulated text. Idempotent per text value, so React
@@ -102,6 +115,8 @@ class StreamingRenderer {
         streaming: true,
         codeLabels: this.codeLabels,
         fileMentions: undefined,
+        imageResolver: this.imageResolver,
+        imageOwner: this.imageOwner,
         targets: frameTargets,
         footnoteOrder: this.frozenFootnoteOrder,
         footnoteCounts: this.frozenFootnoteCounts,
@@ -120,6 +135,8 @@ class StreamingRenderer {
       streaming: true,
       codeLabels: this.codeLabels,
       fileMentions: undefined,
+      imageResolver: this.imageResolver,
+      imageOwner: this.imageOwner,
       targets: frameTargets,
       footnoteOrder: [...this.frozenFootnoteOrder],
       footnoteCounts: new Map(this.frozenFootnoteCounts),
@@ -148,29 +165,50 @@ class StreamingRenderer {
  * links inline-code tokens its resolver recognizes as real files; this is
  * the single streaming gate — it applies to settled renders only, because a
  * streaming message's vocabulary is not final and frozen cached elements
- * must not bake in handlers that could go stale.
+ * must not bake in handlers that could go stale. `imageResolver` applies a
+ * session policy to every image using `imageOwner`; without it, absolute
+ * HTTP(S) images retain direct rendering.
  * @returns A GFM document with TeX math rendered through KaTeX; raw HTML,
- * relative links, and unsafe protocols are disabled, while absolute HTTP(S)
- * images render directly.
+ * relative links and unsafe protocols stay inert. Images resolve and load
+ * automatically through the supplied policy, or use direct HTTP(S) loading
+ * when no policy is present.
  */
-export const MarkdownText = memo(function MarkdownText({ text, streaming = false, codeLabels, fileMentions }: {
+export interface MarkdownTextProps {
   text: string
   streaming?: boolean
   codeLabels?: MarkdownCodeLabels | undefined
   fileMentions?: MarkdownFileMentions | undefined
-}) {
+  imageResolver?: MarkdownImageResolver | undefined
+  imageOwner?: string | undefined
+}
+
+export const MarkdownText = memo(function MarkdownText({
+  text,
+  streaming = false,
+  codeLabels,
+  fileMentions,
+  imageResolver,
+  imageOwner,
+}: MarkdownTextProps) {
   const streamRef = useRef<StreamingRenderer | null>(null)
   const streamLabelsRef = useRef<MarkdownCodeLabels | undefined>(codeLabels)
+  const streamImageResolverRef = useRef<MarkdownImageResolver | undefined>(imageResolver)
+  const streamImageOwnerRef = useRef<string | undefined>(imageOwner)
   const children = useMemo(() => {
     if (!streaming) {
       streamRef.current = null
-      return renderSettled(text, codeLabels, fileMentions)
+      return renderSettled(text, codeLabels, fileMentions, imageResolver, imageOwner)
     }
-    if (streamRef.current === null || streamLabelsRef.current !== codeLabels) {
-      streamRef.current = new StreamingRenderer(codeLabels)
+    if (streamRef.current === null
+      || streamLabelsRef.current !== codeLabels
+      || streamImageResolverRef.current !== imageResolver
+      || streamImageOwnerRef.current !== imageOwner) {
+      streamRef.current = new StreamingRenderer(codeLabels, imageResolver, imageOwner)
       streamLabelsRef.current = codeLabels
+      streamImageResolverRef.current = imageResolver
+      streamImageOwnerRef.current = imageOwner
     }
     return streamRef.current.render(text)
-  }, [text, streaming, codeLabels, fileMentions])
+  }, [text, streaming, codeLabels, fileMentions, imageResolver, imageOwner])
   return <div className={css.markdown}>{children}</div>
 })

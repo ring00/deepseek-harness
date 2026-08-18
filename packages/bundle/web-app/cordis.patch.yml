@@ -198,6 +198,11 @@
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
 
+    # Session-scoped Markdown image policy: pure remote URL inspection,
+    # click confirmation for suspicious destinations, and durable local imports.
+    - id: ui-markdown-images
+      name: '@deepseek-ai/dsh-client-ui-markdown-images'
+
     # Tool call tree, generic fallback, and keyed business Tool views.
     - id: ui-tool
       name: '@deepseek-ai/dsh-client-ui-tool'
