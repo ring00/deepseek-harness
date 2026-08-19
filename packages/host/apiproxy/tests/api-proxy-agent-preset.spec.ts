@@ -126,7 +126,7 @@ async function harness(
       // gateway's own `installTarget` relies on.
       const agentCtx = ctx.extend({ agent })
       ;(agent as { ctx?: Context }).ctx = agentCtx
-      await options.setup?.(agentCtx)
+      await options.setup?.(agentCtx, new AbortController().signal)
       const unregister = ctx.agents.register(agent)
       return { agent, dispose: () => { unregister(); return Promise.resolve() } }
     },

@@ -358,7 +358,14 @@ export class AgentLoop extends Service implements AgentFactory {
         const configuredId = sessionId ?? SessionId(`${id}-session-${randomUUID()}`)
         const persistence = sessionId === undefined ? undefined : ctx.get('sessionPersistence')
         if (persistence === undefined) {
-          this.create(configuredId, options, meta)
+          const startup = ctx.agents.create({
+            sessionId: configuredId,
+            agentOptions: options,
+            meta,
+          }).then(() => undefined).catch((error: unknown) => {
+            this.reportConfiguredStartupFailure(id, 'create', configuredId, error)
+          })
+          this.ownership.trackStartup(startup)
         } else {
           const startup = this.restoreOrCreateConfigured(ctx, persistence, configuredId, options, meta).catch((error: unknown) => {
             this.reportConfiguredStartupFailure(id, 'restore', configuredId, error)
@@ -369,7 +376,7 @@ export class AgentLoop extends Service implements AgentFactory {
       }
       ctx.effect(() => {
         const fiber = ctx.inject(['sessionPersistence'], (childCtx: Context) => {
-          void this.resumeWith(ctx, childCtx.sessionPersistence, {
+          void childCtx.agents.resume({
             resumeSessionId,
             agentOptions: options,
           }).catch((error: unknown) => {
@@ -384,7 +391,7 @@ export class AgentLoop extends Service implements AgentFactory {
   /** Report a contained declarative-start failure to identity-bound consumers. */
   private reportConfiguredStartupFailure(
     configId: string,
-    action: 'restore' | 'resume',
+    action: 'create' | 'restore' | 'resume',
     sessionId: SessionId,
     error: unknown,
   ): void {
@@ -414,7 +421,7 @@ export class AgentLoop extends Service implements AgentFactory {
     await this.waitForDrainingConfiguredIdentity(ownerCtx, sessionId)
     if (!this.ownership.isActive()) return
     try {
-      await this.resumeWith(ownerCtx, persistence, { resumeSessionId: sessionId, agentOptions })
+      await ownerCtx.agents.resume({ resumeSessionId: sessionId, agentOptions })
       return
     } catch (error: unknown) {
       if (!this.ownership.isActive()) return
@@ -424,7 +431,7 @@ export class AgentLoop extends Service implements AgentFactory {
       const exists = (await persistence.list()).some(header => header.id === sessionId)
       if (exists) throw error
     }
-    this.create(sessionId, agentOptions, meta)
+    await ownerCtx.agents.create({ sessionId, agentOptions, meta })
   }
 
   /** Wait for a draining same-id lifecycle to finish registry teardown. */
@@ -587,6 +594,9 @@ export class AgentLoop extends Service implements AgentFactory {
    * @returns the published running agent.
    */
   create(id: SessionId, options: AgentOptions = {}, meta: Pick<SessionHeader, 'cwd'> = {}): Agent {
+    if (this.runtime.ctx.agents.hasSetupContributions()) {
+      throw new Error('agentLoop.create() cannot bypass registered agent setup; use ctx.agents.create()')
+    }
     using preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(id, { meta }))
     const prepared = this.prepare(this.ctx, id, options, preparation.session)
     try {
@@ -635,7 +645,7 @@ export class AgentLoop extends Service implements AgentFactory {
     const session = ownedPreparation.session
     const prepared = this.prepare(ownerCtx, id, agentOptions, session, signal)
     try {
-      const setupCommit = await raceAbort(setup?.(prepared.agent.ctx), prepared.signal, id)
+      const setupCommit = await raceAbort(setup?.(prepared.agent.ctx, prepared.signal), prepared.signal, id)
       setupCommit?.commit()
       return prepared.publish(source)
     } catch (error: unknown) {

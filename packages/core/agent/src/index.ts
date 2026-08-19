@@ -64,10 +64,12 @@ export interface AgentSetupCommit {
 /**
  * Compose an unpublished Agent scope and optionally return its publication commit.
  * @param agentCtx - unpublished Agent scope.
+ * @param signal - creation lifetime fused with contributor removal.
  * @returns an optional synchronous commit invoked after setup awaits settle and immediately before publication.
  */
 export type AgentSetup = (
   agentCtx: Context,
+  signal: AbortSignal,
 ) => AgentSetupCommit | Promise<AgentSetupCommit | void> | void
 
 /**
@@ -128,6 +130,8 @@ export interface CreateAgentOptions {
    * **Setup composes, it never drives**: the callback is trusted same-process
    * code and receives the full scoped context, so this is a contract rather
    * than a runtime restriction. Drive the agent only after creation resolves.
+   * The callback's signal aborts when creation, its owner, the Agent factory,
+   * or an owning setup contribution begins teardown.
    */
   readonly setup?: AgentSetup
 }
@@ -241,6 +245,14 @@ interface FactorySlot {
   readonly target: AgentFactory
 }
 
+/** One effect-owned setup contribution and the calls its disposer must drain. */
+interface SetupContribution {
+  readonly setup: AgentSetup
+  readonly abort: AbortController
+  readonly pending: Set<Promise<unknown>>
+  active: boolean
+}
+
 /**
  * Agent service (`ctx.agents`): tracks live agents and carries the initiating
  * Agent through one process-local asynchronous driver chain. Agent *creation*
@@ -256,6 +268,7 @@ interface FactorySlot {
 export class AgentRegistry extends Service {
   private store = new Map<SessionId, AgentEntry>()
   private factory: FactorySlot | undefined
+  private readonly setupContributions: SetupContribution[] = []
   private readonly initiators = new AsyncLocalStorage<Agent | undefined>()
   private readonly initiatorRuns = new AsyncLocalStorage<InitiatorRun>()
   private initiatorState: 'active' | 'closing' | 'disposed' = 'active'
@@ -387,6 +400,40 @@ export class AgentRegistry extends Service {
     return dispose
   }
 
+  /**
+   * Register ordered composition that every subsequently created or resumed
+   * Agent receives after its caller-owned setup and before publication.
+   * Removal prevents new calls, aborts active calls, and waits for them to
+   * settle; a completed call revalidates the registration at publication.
+   * @param setup - abort-aware composition of one unpublished Agent scope.
+   * @returns the effect disposer that removes and drains this contribution.
+   */
+  registerSetup(setup: AgentSetup): () => void {
+    const contribution: SetupContribution = {
+      setup,
+      abort: new AbortController(),
+      pending: new Set(),
+      active: true,
+    }
+    const dispose = this.ctx.effect(() => {
+      this.setupContributions.push(contribution)
+      return async () => {
+        contribution.active = false
+        const index = this.setupContributions.indexOf(contribution)
+        if (index >= 0) this.setupContributions.splice(index, 1)
+        contribution.abort.abort(new Error('agent setup contribution disposed during setup'))
+        await Promise.allSettled(contribution.pending)
+      }
+    }, 'agents.registerSetup()')
+    // oxlint-disable-next-line typescript/no-misused-promises -- Cordis owns async effect teardown through this exact disposer
+    return dispose
+  }
+
+  /** @internal Whether the unsupported synchronous test constructor would bypass setup. */
+  hasSetupContributions(): boolean {
+    return this.setupContributions.length !== 0
+  }
+
   /** Return the active creation factory. */
   private requireFactory(): FactorySlot {
     if (this.factory === undefined) throw new Error(NO_FACTORY_MESSAGE)
@@ -411,7 +458,10 @@ export class AgentRegistry extends Service {
     const { target } = this.requireFactory()
     const receiver = getTraceable(ownerCtx, target)
     // oxlint-disable-next-line typescript/unbound-method -- Reflect.apply intentionally supplies the caller-traced receiver
-    return Reflect.apply(target.createAgent, receiver, [ownerCtx, options])
+    return Reflect.apply(target.createAgent, receiver, [ownerCtx, {
+      ...options,
+      setup: this.composeSetup(options.setup),
+    }])
   }
 
   /**
@@ -426,7 +476,46 @@ export class AgentRegistry extends Service {
     const { target } = this.requireFactory()
     const receiver = getTraceable(ownerCtx, target)
     // oxlint-disable-next-line typescript/unbound-method -- Reflect.apply intentionally supplies the caller-traced receiver
-    return Reflect.apply(target.resume, receiver, [ownerCtx, options])
+    return Reflect.apply(target.resume, receiver, [ownerCtx, {
+      ...options,
+      setup: this.composeSetup(options.setup),
+    }])
+  }
+
+  /** Compose caller setup followed by a stable registration-order snapshot. */
+  private composeSetup(caller: AgentSetup | undefined): AgentSetup | undefined {
+    if (caller === undefined && this.setupContributions.length === 0) return undefined
+    return async (agentCtx, signal) => {
+      const callerCommit = await caller?.(agentCtx, signal)
+      const contributions = [...this.setupContributions]
+      const commits: Array<{ contribution: SetupContribution; commit: AgentSetupCommit | void }> = []
+      for (const contribution of contributions) {
+        if (!contribution.active) throw new Error('agent setup contribution disposed before setup')
+        const fused = AbortSignal.any([signal, contribution.abort.signal])
+        const pending = Promise.resolve().then(() => contribution.setup(agentCtx, fused))
+        contribution.pending.add(pending)
+        try {
+          commits.push({ contribution, commit: await pending })
+        } finally {
+          contribution.pending.delete(pending)
+        }
+      }
+      const assertActive = (): void => {
+        for (const { contribution } of commits) {
+          if (!contribution.active) throw new Error('agent setup contribution disposed before publication')
+        }
+      }
+      if (callerCommit === undefined && commits.every(entry => entry.commit === undefined)) {
+        return commits.length === 0 ? undefined : { commit: assertActive }
+      }
+      return {
+        commit() {
+          assertActive()
+          callerCommit?.commit()
+          for (const entry of commits) entry.commit?.commit()
+        },
+      }
+    }
   }
 
   /**

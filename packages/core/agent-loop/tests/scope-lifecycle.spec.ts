@@ -239,6 +239,106 @@ describe('agent scope lifecycle', () => {
     await handle.dispose()
   })
 
+  it('runs effect-owned setup contributions after caller setup and commits them in the same order', async () => {
+    const ctx = await harness()
+    const order: string[] = []
+    let contributionSignal: AbortSignal | undefined
+    const owner = await ctx.plugin(Object.assign((inner: Context) => {
+      inner.agents.registerSetup(async (agentCtx, signal) => {
+        contributionSignal = signal
+        order.push(`contribution:${agentCtx.agent?.id}`)
+        await Promise.resolve()
+        return { commit: () => void order.push('contribution:commit') }
+      })
+    }, { inject: ['agents'] }))
+
+    const handle = await ctx.agents.create({
+      sessionId: SessionId('contributed-setup'),
+      setup: (_agentCtx, signal) => {
+        expect(signal.aborted).toBe(false)
+        order.push('caller')
+        return { commit: () => void order.push('caller:commit') }
+      },
+    })
+
+    expect(contributionSignal?.aborted).toBe(false)
+    expect(order).toEqual([
+      'caller',
+      'contribution:contributed-setup',
+      'caller:commit',
+      'contribution:commit',
+    ])
+    await handle.dispose()
+    await owner.dispose()
+    await ctx.fiber.dispose()
+  })
+
+  it('aborts and drains a removed setup contribution before publication', async () => {
+    const ctx = await harness()
+    const started = Promise.withResolvers<AbortSignal>()
+    const settled = Promise.withResolvers<undefined>()
+    const owner = await ctx.plugin(Object.assign((inner: Context) => {
+      inner.agents.registerSetup(async (_agentCtx, signal) => {
+        started.resolve(signal)
+        await new Promise<void>((resolve) => {
+          signal.addEventListener('abort', () => resolve(), { once: true })
+        })
+        settled.resolve(undefined)
+      })
+    }, { inject: ['agents'] }))
+    const creating = ctx.agents.create({ sessionId: SessionId('removed-contribution') })
+    const signal = await started.promise
+
+    const removing = owner.dispose()
+    await settled.promise
+    expect(signal.aborted).toBe(true)
+    await removing
+    await expect(creating).rejects.toThrow('agent setup contribution disposed before publication')
+    expect(ctx.agents.get(SessionId('removed-contribution'))).toBeUndefined()
+    expect(ctx.sessions.get(SessionId('removed-contribution'))).toBeUndefined()
+
+    const replacement = await ctx.agents.create({ sessionId: SessionId('after-contribution') })
+    await replacement.dispose()
+    await ctx.fiber.dispose()
+  })
+
+  it('blocks the unsupported synchronous constructor while setup contributions exist', async () => {
+    const ctx = await harness()
+    const owner = await ctx.plugin(Object.assign((inner: Context) => {
+      inner.agents.registerSetup(() => undefined)
+    }, { inject: ['agents'] }))
+
+    expect(() => ctx.agentLoop.create(SessionId('setup-bypass')))
+      .toThrow('agentLoop.create() cannot bypass registered agent setup')
+
+    await owner.dispose()
+    await ctx.fiber.dispose()
+  })
+
+  it('routes configured startup through registered setup contributions', async () => {
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SystemPrompt, { persona: 'configured' })
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(AgentRegistry)
+    const setupIds: string[] = []
+    ctx.agents.registerSetup((agentCtx) => {
+      setupIds.push(String(agentCtx.agent?.id))
+    })
+    const created = Promise.withResolvers<Agent>()
+    ctx.on('agent/created', ({ agent }) => { created.resolve(agent) })
+
+    await ctx.plugin(AgentLoop, {
+      agents: [{ id: 'configured', sessionId: SessionId('configured-setup'), provider: 'mock', model: 'mock' }],
+    })
+    const agent = await created.promise
+
+    expect(agent.id).toBe(SessionId('configured-setup'))
+    expect(setupIds).toEqual(['configured-setup'])
+    await ctx.fiber.dispose()
+  })
+
   it('keeps both objects unpublished until async setup completes, then announces in order', async () => {
     const ctx = await harness()
     const gate = Promise.withResolvers<undefined>()

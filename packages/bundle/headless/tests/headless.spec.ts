@@ -82,7 +82,7 @@ async function bench(script: Script): Promise<{
         inject: () => {},
         whenIdle: () => idle,
       } satisfies Partial<Agent>)
-      await options.setup?.(agentCtx)
+      await options.setup?.(agentCtx, new AbortController().signal)
       script.before?.(session)
       ctx.agents.register(agent)
       return { agent, dispose: () => Promise.resolve() }

@@ -10,20 +10,18 @@ agent（智能体）的唯一具体实现插件和循环驱动器。其包内部
 
 ### 公开 API
 
-创建与恢复属于同一个受回滚保护的事务：构造私有会话、具体 agent 和带作用域的上下文；等待可选 setup；进入两个注册表；依次宣告 `session/created` 和 `agent/created`；发出 `agent/session-start`；此后才启动驱动器。Setup 作为受信任的同进程组合代码，接收完整的带作用域 `Context`，并且不得驱动尚未发布的 agent。普通的类型化身份与选项输入按只读约定借用；seed 事件和会话元数据会跨越持久会话边界，因此系统会对其进行验证并创建快照。可选的 `AbortSignal` 只取消加载／setup／发布，并在返回的 handle 可见前分离。
+创建与恢复属于同一个受回滚保护的事务：构造私有会话、具体 agent 和带作用域的上下文；等待调用方 setup 和有序的 `ctx.agents.registerSetup()` 贡献；进入两个注册表；依次宣告 `session/created` 和 `agent/created`；发出 `agent/session-start`；此后才启动驱动器。Setup 作为受信任的同进程组合代码，接收完整的带作用域 `Context` 和创建期取消信号，并且不得驱动尚未发布的 agent。普通的类型化身份与选项输入按只读约定借用；seed 事件和会话元数据会跨越持久会话边界，因此系统会对其进行验证并创建快照。可选的 `AbortSignal` 只取消加载／setup／发布，并在返回的 handle 可见前分离。
 
 调用方 fiber 与 AgentLoop 提供方共同拥有 agent。`AgentFactory.createAgent(ownerCtx, options)` 与 `resume(ownerCtx, options)` 显式接收调用方所有权，而工厂为 `sessions`/`llm`/`tools`/`systemPrompt` 保留自身的依赖上下文；这样，调用方可以只注入 `agents`，而不会缩减新 agent 的服务接口。调用方卸载、handle dispose（资源释放）或提供方卸载都会汇合到同一个记忆化的完全停稳边界。提供方关闭会同时等待资源 teardown，以及已经观测到停用的公开 create/resume 包装层，因此依赖消失后，任何 continuation 都无法继续发布。
 
 每个 agent 与其会话共享一个由调用方选择的 `SessionId`，并假设它在全局唯一；意外的 UUID 冲突不属于受支持模型。两个使用同一 id 的并发操作都可以进行准备，但最终的 `enter()` 调用会裁决发布，所有失败方都会回滚各自的私有资源。每次 detach 都绑定到确切进入的对象，因此陈旧 disposer 无法移除之后出现的同 id 替代项。在同步创建通知期间请求的 detach 会等待该次分发退栈，从而保留 created/disposed 配对。Teardown 按以下顺序执行：停止并排空 → 撤销作用域 → detach agent → detach 会话。私有作用域清理完成后，该 id 即可复用。不具否决能力的普通 `agent/*` 通知通过 `agentEvents(ctx, agent)` 发出；逐步骤组装通过 `assembleContextFor(agent)` 完成。
-
-- `ctx.agentLoop.create(id: SessionId, options?: AgentOptions, meta?: { cwd?: string }): Agent`：在确切共享的 agent／会话 id 下同步创建，不运行 setup，并随调用方 fiber 一同 dispose。声明式配置把 `agents[].id` 视为稳定 label，通常会先生成 `${label}-session-<uuid>`，再调用此边界。应用也可以提供稳定且确切的 `sessionId`：首次使用时创建；重新挂载且持久化内容已存在时，则恢复已经实体化的历史。`resumeSessionId` 要求并加载现有的持久化 id，且与 `sessionId` 互斥。这样，默认情况下每次重启都会创建新会话，从而避免冲突，也无需保留第二个实时路由身份。
 
 `AgentLoop` 还实现 `AgentFactory` 约定，并通过 `ctx.agents.setFactory(this)` 注册自身，因此插件会通过 `ctx.agents` 创建／恢复 agent：
 
 - `ctx.agents.create({ sessionId, meta?, seed?, agentOptions?, setup?, signal? }): Promise<AgentHandle>`：使用调用方提供的共享 id 以编程方式创建。它会等待尚未发布的 setup 事务，然后才返回；`meta` 携带 cwd／谱系／seed 边界元数据，`seed` 则在会话边界验证并快照持久值后，重建 fork 子级的前缀。`signal` 只在此 Promise 结算前生效。返回的 [`AgentHandle`](../agent/README.md) 拥有确切的 teardown 能力。
 - `ctx.agents.resume({ resumeSessionId, agentOptions?, setup?, signal? }): Promise<AgentHandle>`：通过 `ctx.sessionPersistence` 加载持久化会话（参见[会话持久化](../../../.agents/notes/implemented/architecture/2026-06-14-session-persistence.md)），使用同一 id 注册 agent，重建历史，然后针对全新且尚未发布的 agent 作用域等待 setup，再执行受回滚保护的发布。轮次编号和派生历史从已加载日志继续。此操作要求存在会话持久化后端（不会硬注入，因此非持久化 demo 仍能工作；缺少持久化时，`resume` 会以明确错误拒绝）。`signal` 仅用于创建。返回 `AgentHandle`。
 
-配置驱动的 `ctx.agentLoop.create()` 路径让循环 fiber 拥有其 agent（该路径会丢弃 handle）。对于以编程方式创建的 agent，handle 持有者是唯一面向消费方的 teardown 能力；AgentLoop 提供方卸载是一条独立的结构性 teardown 边，而不是向应用代码公开的另一个 handle。
+配置驱动的 agent 由循环 fiber 持有。对于以编程方式创建的 agent，handle 持有者是唯一面向消费方的 teardown 能力；AgentLoop 提供方卸载是一条独立的结构性 teardown 边，而不是向应用代码公开的另一个 handle。
 
 ### 注入的服务
 
@@ -130,5 +128,5 @@ interface Config {
 
 - **分类是一元的**：安全性取决于比较同级调用或资源的调用必须保持独占（参见[设计原理](../../../.agents/notes/implemented/feature/2026-07-10-parallel-tool-call-execution.md)）。
 - **配置 label 默认对应新会话**：省略 `sessionId` 时，每次启动都会创建新的 `${id}-session-<uuid>`；如需确切的恢复或创建行为，必须显式提供稳定的 `sessionId`，而 `resumeSessionId` 要求已有持久化历史。
-- **配置 agent 没有逐 agent persona 字段或 setup 钩子**：它们使用部署 persona；只有编程式 `ctx.agents.create()` / `resume()` 工厂选项支持带作用域的 persona／工具组合。
+- **配置 agent 没有逐 agent persona 字段或 setup 钩子**：它们使用部署 persona，但与程序化创建一样会接收部署级的有序 `ctx.agents.registerSetup()` 贡献。
 - **没有内置轮次预算**：工具调用或 steering 会让当前轮次继续；限制失控轮次的策略必须从既有生命周期扩展点（如 `agent/turn-stopping`）执行取消。
