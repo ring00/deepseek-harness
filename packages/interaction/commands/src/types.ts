@@ -40,7 +40,7 @@ export interface CommandExecution {
 
 /** Handler-free immutable command view returned to UI adapters. */
 export interface CommandDescriptor {
-  /** Lowercase command name without the leading slash. */
+  /** Lowercase command name without the leading slash; colon separates namespaces. */
   readonly name: string
   /** Human-readable summary used in discovery UI. */
   readonly description: string

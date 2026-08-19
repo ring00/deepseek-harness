@@ -1,19 +1,44 @@
-# Test-only Agent Plugins composition. The environment owns the absolute plugin
-# and persistent-data paths so the checked-in row never trusts a relative root.
+# Test-only Agent Plugins and Claude composition. The driver creates a project
+# fixture under an isolated temporary directory before creating the agent.
+- id: llm
+  name: '@deepseek-ai/dsh-llm'
+
+- id: sessions
+  name: '@deepseek-ai/dsh-session'
+
 - id: system-prompt
   name: '@deepseek-ai/dsh-system-prompt'
 
 - id: tools
   name: '@deepseek-ai/dsh-tools'
 
+- id: agents
+  name: '@deepseek-ai/dsh-agent'
+
 - id: skills
   name: '@deepseek-ai/dsh-skill'
+
+- id: commands
+  name: '@deepseek-ai/dsh-commands'
+
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+  config:
+    dshHome: !!js process.env.DSH_HOME
+    watch: false
+
+- id: agent-loop
+  name: '@deepseek-ai/dsh-agent-loop'
+  config:
+    agents: []
 
 - id: agent-plugins
   name: '@deepseek-ai/dsh-agent-plugins'
   config:
-    root: !!js process.env.DSH_AGENT_PLUGIN_ROOT
-    dataDir: !!js process.env.DSH_AGENT_PLUGIN_DATA
+    discovery:
+      defaults:
+        - claude
+    dataRoot: !!js process.env.DSH_AGENT_PLUGIN_DATA
     mcp:
       toolCallTimeoutMs: 5000
       reconnect:

@@ -6,6 +6,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { createScope } from '@deepseek-ai/dsh-scope'
 import type { Config } from '@deepseek-ai/dsh-mcp-client'
 
 // ---- Mock MCP SDK ----
@@ -236,6 +237,17 @@ describe('apply (plugin lifecycle)', () => {
 
     expect(ctx.tools.get('mcp__srv__remote')).toBeDefined()
     expect(other.tools.get('mcp__srv__remote')).toBeDefined()
+  })
+
+  it('scopes serverName reservations by DSH scope within one app', async () => {
+    const first = createScope(ctx, {})
+    const second = createScope(ctx, {})
+
+    await Promise.all([apply(first.ctx, stdioConfig), apply(second.ctx, stdioConfig)])
+    await expect(apply(first.ctx, stdioConfig)).rejects.toThrow(/serverName "srv" is already in use/)
+
+    await first.dispose()
+    await second.dispose()
   })
 
   it('logs error and registers no tools when connect fails; dispose closes the client', async () => {

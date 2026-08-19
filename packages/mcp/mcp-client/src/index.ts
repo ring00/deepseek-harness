@@ -16,6 +16,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
+import { scopeOf } from '@deepseek-ai/dsh-scope'
 import { RECONNECT_DEFAULTS, resolveReconnectPolicy, startConnection } from './connection.ts'
 import type { ReconnectConfig } from './connection.ts'
 // Side-effect type import: declaration-merges `ctx.tools` onto Context.
@@ -42,7 +43,12 @@ const SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
  * namespace is a configuration error surfaced at plugin load, never silent
  * shadowing.
  */
-const activeServerNames = new WeakMap<Context, Set<string>>()
+interface RootReservations {
+  readonly unscoped: Set<string>
+  readonly scoped: WeakMap<object, Set<string>>
+}
+
+const activeServerNames = new WeakMap<Context, RootReservations>()
 
 // ---- Config ----
 
@@ -146,10 +152,16 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // Reserve the namespace next: a duplicate `serverName` fails THIS instance
   // at load with an actionable error and leaves the earlier instance intact.
   ctx.effect(() => {
-    let names = activeServerNames.get(ctx.root)
-    if (!names) {
+    let reservations = activeServerNames.get(ctx.root)
+    if (!reservations) {
+      reservations = { unscoped: new Set(), scoped: new WeakMap() }
+      activeServerNames.set(ctx.root, reservations)
+    }
+    const scope = scopeOf(ctx)
+    let names = scope === undefined ? reservations.unscoped : reservations.scoped.get(scope)
+    if (names === undefined) {
       names = new Set()
-      activeServerNames.set(ctx.root, names)
+      if (scope !== undefined) reservations.scoped.set(scope, names)
     }
     if (names.has(config.serverName)) {
       throw new Error(

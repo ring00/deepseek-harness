@@ -25,7 +25,7 @@ interface CommandInputDescriptor {
 ```ts type-equiv
 /** Plugin-owned command registration. */
 interface CommandDefinition {
-  /** Lowercase command name without the leading slash. */
+  /** Lowercase command name without the leading slash; colon separates namespaces. */
   readonly name: string
   /** Human-readable summary used in discovery UI. */
   readonly description: string
@@ -81,7 +81,7 @@ type CommandResult =
 ```ts type-equiv
 /** Handler-free immutable command view returned to UI adapters. */
 interface CommandDescriptor {
-  /** Lowercase command name without the leading slash. */
+  /** Lowercase command name without the leading slash; colon separates namespaces. */
   readonly name: string
   /** Human-readable summary used in discovery UI. */
   readonly description: string

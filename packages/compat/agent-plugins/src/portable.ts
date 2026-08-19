@@ -61,6 +61,8 @@ export interface PortableSkill {
   readonly content: string
   readonly path: string
   readonly resourceBase: string
+  /** Adapter-provided invocation policy; strict Agent Skills use both defaults. */
+  readonly invocation?: Readonly<{ modelInvocable: boolean; userInvocable: boolean }>
   readonly metadata?: Readonly<Record<string, unknown>>
 }
 
@@ -104,6 +106,8 @@ export interface LoadAgentPluginOptions {
   readonly dataDir?: string
   /** Parent directory used for the default `<name>-<root-hash>` data directory. */
   readonly defaultDataRoot: string
+  /** Stable installation identity used instead of the versioned canonical root. */
+  readonly instanceIdentity?: string
   /** Sanitized executable search path used before plugin environment overlays. */
   readonly basePath?: string | undefined
   /** Test/corpus substitution for bare executable resolution; defaults to `which`. */
@@ -152,7 +156,7 @@ export async function loadAgentPlugin(
   }
   const validators = await loadValidators()
   const manifest = await loadManifest(root, validators.manifest, report)
-  const instanceHash = digest(root)
+  const instanceHash = digest(options.instanceIdentity ?? root)
   const selectedDataDir = options.dataDir ?? join(options.defaultDataRoot, `${manifest.name}-${instanceHash}`)
   await mkdir(selectedDataDir, { recursive: true })
   const dataDir = await canonicalDirectory(selectedDataDir, 'agent plugin dataDir')
@@ -229,45 +233,66 @@ async function loadSkills(
   root: string,
   report: (subject: string, message: string) => void,
 ): Promise<PortableSkill[]> {
-  const skillsRoot = await optionalContainedComponent(root, join(root, 'skills'), 'directory', 'skills', report)
-  if (skillsRoot === undefined) return []
-  const entries = (await readdir(skillsRoot, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name))
+  return loadAgentSkills(root, [join(root, 'skills')], { report })
+}
+
+/**
+ * Load Agent Skills from declared roots while retaining strict path containment.
+ * @param root - canonical plugin root.
+ * @param locations - manifest-declared or conventional component locations.
+ * @param options - strict or Claude parsing policy and diagnostic sink.
+ * @returns every valid contained Agent Skill entry.
+ */
+export async function loadAgentSkills(
+  root: string,
+  locations: readonly string[],
+  options: {
+    readonly adapter?: 'claude'
+    readonly report?: (subject: string, message: string) => void
+  } = {},
+): Promise<PortableSkill[]> {
+  const report = options.report ?? (() => {})
+  const directories: string[] = []
+  const seen = new Set<string>()
+  for (const location of locations) {
+    const selected = await optionalContainedComponent(root, resolve(root, location), 'directory', 'skills', report)
+    if (selected === undefined) continue
+    if (await isRegularFile(join(selected, 'SKILL.md'))) directories.push(selected)
+    else {
+      const entries = (await readdir(selected, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name))
+      for (const entry of entries) {
+        if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
+        try {
+          const directory = await realpath(join(selected, entry.name))
+          if (isContained(root, directory) && await isRegularFile(join(directory, 'SKILL.md'))) directories.push(directory)
+        } catch (error) {
+          if (!isMissing(error)) report(`skill:${entry.name}`, errorMessage(error))
+        }
+      }
+    }
+  }
   const skills: PortableSkill[] = []
-  for (const entry of entries) {
-    const candidate = join(skillsRoot, entry.name)
-    let skillDirectory: string
+  for (const skillDirectory of directories) {
+    if (seen.has(skillDirectory)) continue
+    seen.add(skillDirectory)
+    const directoryName = basename(skillDirectory)
     try {
-      skillDirectory = await realpath(candidate)
-      if (!isContained(root, skillDirectory) || !(await stat(skillDirectory)).isDirectory()) continue
+      const skillPath = await requiredContainedFile(root, join(skillDirectory, 'SKILL.md'), `skill:${directoryName}`)
+      skills.push(parseSkill(directoryName, skillDirectory, skillPath, await readFile(skillPath, 'utf8'), options.adapter))
     } catch (error) {
-      if (isMissing(error)) continue
-      report(`skill:${entry.name}`, errorMessage(error))
-      continue
-    }
-    let skillPath: string
-    try {
-      skillPath = await requiredContainedFile(root, join(skillDirectory, 'SKILL.md'), `skill:${entry.name}`)
-    } catch (error) {
-      if (isMissing(error)) continue
-      report(`skill:${entry.name}`, errorMessage(error))
-      continue
-    }
-    try {
-      skills.push(parseSkill(entry.name, skillDirectory, skillPath, await readFile(skillPath, 'utf8')))
-    } catch (error) {
-      report(`skill:${entry.name}`, errorMessage(error))
+      report(`skill:${directoryName}`, errorMessage(error))
     }
   }
   return skills
 }
 
 /** Parse and validate one Agent Skill from already-read content. */
-function parseSkill(directoryName: string, directory: string, path: string, content: string): PortableSkill {
+function parseSkill(directoryName: string, directory: string, path: string, content: string, adapter?: 'claude'): PortableSkill {
   const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(content)
   if (match === null) throw new Error('SKILL.md requires closed YAML frontmatter')
   const parsed = requireRecord(parseYaml(match[1] as string), 'SKILL.md frontmatter')
   const extraFields = Object.keys(parsed).filter(key => !SKILL_FIELDS.has(key))
-  if (extraFields.length > 0) throw new Error(`unexpected frontmatter fields: ${extraFields.sort().join(', ')}`)
+  if (adapter === undefined && extraFields.length > 0) throw new Error(`unexpected frontmatter fields: ${extraFields.sort().join(', ')}`)
   const name = requireString(parsed.name, 'skill name')
   const description = requireString(parsed.description, 'skill description')
   if (!SKILL_NAME.test(name) || name.length > 64) throw new Error(`invalid skill name ${JSON.stringify(name)}`)
@@ -289,13 +314,27 @@ function parseSkill(directoryName: string, directory: string, path: string, cont
     for (const [key, value] of Object.entries(metadata)) requireString(value, `skill metadata.${key}`, true)
     standardMetadata.metadata = metadata
   }
+  const adapterMetadata = adapter === undefined ? undefined : Object.fromEntries(
+    Object.entries(parsed).filter(([key]) => !SKILL_FIELDS.has(key)),
+  )
   return {
     name,
     description,
     content: content.slice(match[0].length),
     path,
     resourceBase: directory,
-    ...Object.keys(standardMetadata).length === 0 ? {} : { metadata: { 'agentskills.io': standardMetadata } },
+    ...adapter === undefined ? {} : {
+      invocation: {
+        modelInvocable: parsed['disable-model-invocation'] !== true,
+        userInvocable: parsed['user-invocable'] !== false,
+      },
+    },
+    ...Object.keys(standardMetadata).length === 0 && Object.keys(adapterMetadata ?? {}).length === 0 ? {} : {
+      metadata: {
+        ...Object.keys(standardMetadata).length === 0 ? {} : { 'agentskills.io': standardMetadata },
+        ...Object.keys(adapterMetadata ?? {}).length === 0 ? {} : { 'claude-code': adapterMetadata },
+      },
+    },
   }
 }
 
@@ -518,6 +557,10 @@ async function requiredContainedFile(root: string, path: string, subject: string
   if (!isContained(root, canonical)) throw new Error(`${subject} resolves outside the plugin root`)
   if (!(await stat(canonical)).isFile()) throw new Error(`${subject} is not a regular file`)
   return canonical
+}
+
+async function isRegularFile(path: string): Promise<boolean> {
+  try { return (await stat(path)).isFile() } catch { return false }
 }
 
 async function canonicalDirectory(path: string, subject: string): Promise<string> {

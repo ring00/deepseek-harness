@@ -1,13 +1,16 @@
 {
-  "version": 1,
+  "version": 2,
   "plugins": [
     {
       "repository": "https://github.com/agentplugins/agent-plugins-example.git",
       "commit": "5f3f5084a821aefa792e79500dd8f0462ab83473",
       "pluginRoot": ".",
       "license": "MIT",
+      "format": "agent-plugins",
       "expected": {
+        "name": "agent-plugins-example",
         "skills": ["migrate-agent-plugin"],
+        "commands": [],
         "mcp": []
       }
     },
@@ -16,8 +19,11 @@
       "commit": "6681c970eebfcff147cc1a0f5610605a8f937e26",
       "pluginRoot": ".",
       "license": "MIT",
+      "format": "agent-plugins",
       "expected": {
+        "name": "daisyui",
         "skills": ["daisyui"],
+        "commands": [],
         "mcp": []
       }
     },
@@ -26,8 +32,11 @@
       "commit": "915fdbf44b7a6bf835df41bedde98099cdfe8f9d",
       "pluginRoot": ".",
       "license": "MIT-0",
+      "format": "agent-plugins",
       "expected": {
+        "name": "spec-driven-presentation-maker",
         "skills": ["sdpm-spec", "sdpm-style", "sdpm-translate", "sdpm-vibe"],
+        "commands": [],
         "mcp": [{ "key": "sdpm", "transport": "stdio" }]
       }
     },
@@ -36,7 +45,9 @@
       "commit": "67dbc8f4fe1db20497954b4ba0107062dda434d8",
       "pluginRoot": ".",
       "license": "MIT",
+      "format": "agent-plugins",
       "expected": {
+        "name": "n8n-mcp-skills",
         "skills": [
           "n8n-agents",
           "n8n-binary-and-data",
@@ -54,7 +65,38 @@
           "n8n-workflow-patterns",
           "using-n8n-mcp-skills"
         ],
+        "commands": [],
         "mcp": [{ "key": "n8n-mcp", "transport": "streamable-http" }]
+      }
+    },
+    {
+      "repository": "https://github.com/anthropics/claude-plugins-official.git",
+      "commit": "ff2a7b576c20b2f1a777c497455e5d1e443f23e9",
+      "pluginRoot": "plugins/frontend-design",
+      "license": "Apache-2.0",
+      "format": "claude",
+      "expected": {
+        "name": "frontend-design",
+        "skills": ["frontend-design"],
+        "commands": [],
+        "mcp": []
+      }
+    },
+    {
+      "repository": "https://github.com/anthropics/claude-plugins-official.git",
+      "commit": "ff2a7b576c20b2f1a777c497455e5d1e443f23e9",
+      "pluginRoot": "plugins/commit-commands",
+      "license": "Apache-2.0",
+      "format": "claude",
+      "expected": {
+        "name": "commit-commands",
+        "skills": [],
+        "commands": [
+          { "name": "commit-commands:clean_gone", "partial": false },
+          { "name": "commit-commands:commit-push-pr", "partial": true },
+          { "name": "commit-commands:commit", "partial": true }
+        ],
+        "mcp": []
       }
     }
   ]

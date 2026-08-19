@@ -1,10 +1,33 @@
 {
+  "inventory": {
+    "qualifiedId": "project:claude:snapshot-claude",
+    "name": "snapshot-claude",
+    "version": "1.0.0",
+    "format": "claude",
+    "source": "Project Claude",
+    "status": "partial",
+    "skillCount": 1,
+    "commandCount": 1,
+    "mcpServerCount": 1
+  },
   "skill": {
     "name": "snapshot-plugin-skill",
-    "description": "Proves Agent Plugin skills load through an assembled DSH configuration.",
+    "description": "Proves Claude plugin skills load through an assembled DSH configuration.",
     "content": "Return `AGENT_PLUGIN_SNAPSHOT_SKILL_OK`.",
     "source": "agent-plugin",
-    "provider": "agent-plugin:snapshot-compat:<instance>"
+    "provider": "agent-plugin:snapshot-claude:<instance>"
+  },
+  "command": {
+    "result": {
+      "kind": "success",
+      "text": "Queued /snapshot-claude:check."
+    },
+    "prompt": "Verify \"quoted value\" from <project> with [Claude dynamic command omitted; use ordinary DSH tools and approvals if needed.].\n",
+    "source": {
+      "kind": "agent-plugin-command",
+      "plugin": "project:claude:snapshot-claude",
+      "command": "snapshot-claude:check"
+    }
   },
   "tool": {
     "name": "mcp__<instance>__probe",

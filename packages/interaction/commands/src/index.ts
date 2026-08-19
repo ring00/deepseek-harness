@@ -22,7 +22,7 @@ export type * from './types.ts'
 
 export const name = 'commands'
 
-const COMMAND_NAME = /^[a-z][a-z0-9_-]*$/u
+const COMMAND_NAME = /^[a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)*$/u
 
 /** Invocation passed to one registered command handler. */
 export interface CommandInvocation {
@@ -38,7 +38,7 @@ export interface CommandInvocation {
 
 /** Plugin-owned command registration. */
 export interface CommandDefinition {
-  /** Lowercase command name without the leading slash. */
+  /** Lowercase command name without the leading slash; colon separates namespaces. */
   readonly name: string
   /** Human-readable summary used in discovery UI. */
   readonly description: string
@@ -100,7 +100,7 @@ declare module '@deepseek-ai/cordis' {
  * @returns The parsed command, or `undefined` when the line is not a command.
  */
 export function parseCommand(line: string): ParsedCommand | undefined {
-  const match = /^\/([a-z][a-z0-9_-]*)(?=$|[\t\n\r ])/u.exec(line)
+  const match = /^\/([a-z][a-z0-9_-]*(?::[a-z][a-z0-9_-]*)*)(?=$|[\t\n\r ])/u.exec(line)
   if (match === null) return undefined
   const name = match[1]
   /* v8 ignore next -- the first capture is required whenever the regular expression matches */

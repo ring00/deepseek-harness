@@ -43,11 +43,12 @@ describe('parseCommand()', () => {
     ['/goal create the thing', { name: 'goal', rawInput: ' create the thing' }],
     ['/goal\ncreate the thing', { name: 'goal', rawInput: '\ncreate the thing' }],
     ['/goal_name-2\t x ', { name: 'goal_name-2', rawInput: '\t x ' }],
+    ['/commit-commands:commit release', { name: 'commit-commands:commit', rawInput: ' release' }],
   ] as const)('parses %j without normalizing trailing input', (line, expected) => {
     expect(parseCommand(line)).toEqual(expected)
   })
 
-  it.each(['goal', ' /goal', '/', '/Goal', '/goal/path', '/goal🔥'])('rejects non-command boundary %j', (line) => {
+  it.each(['goal', ' /goal', '/', '/Goal', '/goal/path', '/goal::nested', '/goal:Nested', '/goal🔥'])('rejects non-command boundary %j', (line) => {
     expect(parseCommand(line)).toBeUndefined()
   })
 })

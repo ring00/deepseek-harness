@@ -1,22 +1,32 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import * as AgentPlugins from '@deepseek-ai/dsh-agent-plugins'
 import { serverNamespace } from '@deepseek-ai/dsh-agent-plugins/portable'
-import SkillRegistry, { type SkillProvider } from '@deepseek-ai/dsh-skill'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import CommandRuntime from '@deepseek-ai/dsh-commands'
+import { CredentialProvider } from '@deepseek-ai/dsh-credentials'
+import type { CredentialInfo, CredentialRef, ResolvedCredential } from '@deepseek-ai/dsh-credentials'
+import { CallId } from '@deepseek-ai/dsh-llm'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
 
-const runtimeFixture = fileURLToPath(new URL('./fixtures/runtime/', import.meta.url))
+const runtimeFixture = fileURLToPath(new URL('./fixtures/runtime/', import.meta.url)).replace(/\/$/u, '')
 const temporaryRoots: string[] = []
 
-afterEach(async () => {
-  await Promise.all(temporaryRoots.splice(0).map(path => rm(path, { recursive: true, force: true })))
-})
+afterEach(async () => Promise.all(temporaryRoots.splice(0).map(path => rm(path, { recursive: true, force: true }))))
+
+class MemoryCredentials extends CredentialProvider {
+  override resolve(_ref: CredentialRef): Promise<ResolvedCredential | undefined> { return Promise.resolve(undefined) }
+  override describe(_ref: CredentialRef): Promise<CredentialInfo> { return Promise.resolve({ configured: false, writable: false }) }
+  override set(): Promise<void> { return Promise.reject(new Error('read only')) }
+  override unset(): Promise<void> { return Promise.reject(new Error('read only')) }
+}
 
 async function temporaryDirectory(label: string): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), `dsh-agent-plugins-${label}-`))
@@ -26,159 +36,89 @@ async function temporaryDirectory(label: string): Promise<string> {
 
 async function mountBase(): Promise<Context> {
   const ctx = new Context()
-  await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ToolRuntime)
+  await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(SkillRegistry)
+  await ctx.plugin(CommandRuntime)
+  await ctx.plugin(MemoryCredentials)
+  await ctx.plugin(AgentLoop, { agents: [] })
   return ctx
 }
 
-function overridingProvider(): SkillProvider {
+function config(dataRoot: string): AgentPlugins.Config {
   return {
-    name: 'integration-override',
-    list: () => Promise.resolve([{
-      name: 'runtime-skill',
-      description: 'Lower rank wins.',
-      invocation: { modelInvocable: true, userInvocable: true },
-      source: 'integration',
-      provider: 'integration-override',
-      rank: 500,
-      locator: 'override',
-    }]),
-    get: candidate => Promise.resolve({
-      name: candidate.name,
-      description: candidate.description,
-      content: 'override',
-      invocation: candidate.invocation,
-      source: candidate.source,
-      provider: candidate.provider,
-    }),
+    discovery: { defaults: [], sources: [{ id: 'runtime', path: runtimeFixture, base: 'absolute', layout: 'plugin' }] },
+    dataRoot,
   }
 }
 
-async function executeText(ctx: Context, name: string, args: Record<string, unknown> = {}): Promise<string> {
+async function createAgent(ctx: Context, cwd: string, id: string) {
+  return (await ctx.agents.create({ sessionId: SessionId(id), meta: { cwd } })).agent
+}
+
+async function executeText(ctx: Context, agent: Awaited<ReturnType<typeof createAgent>>, name: string, value: string): Promise<string> {
   const result = await ctx.tools.execute({
-    callId: `agent-plugin-${Date.now()}` as never,
-    signal: new AbortController().signal,
-    name,
-    arguments: args,
+    agent, callId: CallId(`plugin-${value}`), signal: new AbortController().signal, name, arguments: { value },
   })
   const first = result.content[0]
-  if (first?.type !== 'text') throw new Error(`expected text result, got ${JSON.stringify(result.content)}`)
+  if (first?.type !== 'text') throw new Error('expected text MCP result')
   return first.text
 }
 
-async function eventually<T>(operation: () => Promise<T>, accept: (value: T) => boolean): Promise<T> {
-  let lastError: unknown
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    try {
-      const value = await operation()
-      if (accept(value)) return value
-    } catch (error) {
-      lastError = error
-    }
-    await new Promise(resolve => setTimeout(resolve, 25))
-  }
-  throw new Error('condition did not settle', { cause: lastError })
-}
-
-describe('Cordis Agent Plugins adapter', () => {
-  it('registers a parsed in-memory provider at bundled precedence and unregisters it on disposal', async () => {
+describe('per-agent compatibility generations', () => {
+  it('attaches only during agent creation and removes generations with their owners', async () => {
     const ctx = await mountBase()
-    const dataDir = await temporaryDirectory('skill-data')
-    const fiber = ctx.plugin(AgentPlugins, { root: runtimeFixture, dataDir })
-    await fiber
+    const cwd = await temporaryDirectory('workspace')
+    const existing = await createAgent(ctx, cwd, 'existing')
+    const row = ctx.plugin(AgentPlugins, config(await temporaryDirectory('data')))
+    await row
 
-    const listed = await ctx.skills.list()
-    expect(listed).toHaveLength(1)
-    expect(listed[0]).toMatchObject({
-      name: 'runtime-skill',
-      source: 'agent-plugin',
-      resourceBase: { kind: 'directory', path: join(runtimeFixture, 'skills', 'runtime-skill') },
-    })
-    expect(listed[0]?.provider).toMatch(/^agent-plugin:runtime-fixture:[0-9a-f]{12}$/)
-    const loaded = await ctx.skills.get('runtime-skill')
-    expect(loaded?.content).toContain('RUNTIME_SKILL_OK')
+    expect(await ctx.skills.list({ scope: existing })).toEqual([])
+    const created = await createAgent(ctx, cwd, 'created')
+    expect((await ctx.skills.list({ scope: created })).map(skill => skill.name)).toEqual(['runtime-skill'])
+    expect(ctx.agentPlugin.list(created).entries).toEqual([
+      expect.objectContaining({ name: 'runtime-fixture', source: 'runtime', format: 'agent-plugins', skillCount: 1, mcpServerCount: 2 }),
+    ])
+    expect(JSON.stringify(ctx.agentPlugin.list(created))).not.toContain(runtimeFixture)
 
-    ctx.skills.registerProvider(() => overridingProvider())
-    expect((await ctx.skills.list())[0]?.provider).toBe('integration-override')
-
-    await fiber.dispose()
-    expect((await ctx.skills.list())[0]?.provider).toBe('integration-override')
+    await created.ctx.fiber.dispose()
+    expect(ctx.agentPlugin.list(created).entries).toEqual([])
+    const replacement = await createAgent(ctx, cwd, 'replacement')
+    expect((await ctx.skills.list({ scope: replacement })).map(skill => skill.name)).toEqual(['runtime-skill'])
+    await row.dispose()
+    expect(await ctx.skills.list({ scope: replacement })).toEqual([])
     await ctx.fiber.dispose()
   }, 20_000)
 
-  it('owns independent MCP children, survives a sibling startup failure, reconnects, and disposes every tool', async () => {
+  it('allows the same stable MCP namespace in separate agent scopes', async () => {
     const ctx = await mountBase()
-    const dataDir = await temporaryDirectory('mcp-data')
-    const fiber = ctx.plugin(AgentPlugins, {
-      root: runtimeFixture,
-      dataDir,
-      mcp: {
-        toolCallTimeoutMs: 5_000,
-        reconnect: { enabled: true, initialDelayMs: 10, maxDelayMs: 20, maxAttempts: 20 },
-      },
-    })
-    await fiber
-    const root = fileURLToPath(new URL('./fixtures/runtime/', import.meta.url)).replace(/\/$/, '')
-    const instanceHash = createHash('sha256').update(root).digest('hex').slice(0, 12)
-    const namespace = serverNamespace('runtime-fixture', 'runtime', instanceHash)
-    const probe = `mcp__${namespace}__probe`
-    const crash = `mcp__${namespace}__crash_once`
+    const cwd = await temporaryDirectory('workspace')
+    const dataRoot = await temporaryDirectory('data')
+    await ctx.plugin(AgentPlugins, config(dataRoot))
+    const first = await createAgent(ctx, cwd, 'first')
+    const second = await createAgent(ctx, cwd, 'second')
+    const identity = `configured:runtime:${basename(runtimeFixture)}`
+    const namespace = serverNamespace('runtime-fixture', 'runtime', createHash('sha256').update(identity).digest('hex').slice(0, 12))
+    const tool = `mcp__${namespace}__probe`
 
-    expect(await executeText(ctx, probe)).toBe('AGENT_PLUGIN_MCP_OK')
-    expect(await executeText(ctx, crash)).toBe('crashing once')
-    expect(await eventually(() => executeText(ctx, probe, { value: 'RECONNECTED' }), value => value === 'RECONNECTED'))
-      .toBe('RECONNECTED')
-    expect(await readFile(join(dataDir, 'crashed'), 'utf8')).toBe('1\n')
-
-    await fiber.dispose()
-    expect(ctx.tools.get(probe)).toBeUndefined()
-    expect(ctx.tools.get(crash)).toBeUndefined()
-    expect(await ctx.skills.list()).toEqual([])
-    await ctx.fiber.dispose()
-  }, 30_000)
-
-  it('replaces the complete row when configuration HMR disposes and remounts it', async () => {
-    const ctx = await mountBase()
-    const firstData = await temporaryDirectory('hmr-first')
-    const first = ctx.plugin(AgentPlugins, { root: runtimeFixture, dataDir: firstData })
-    await first
-    expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['runtime-skill'])
-
-    await first.dispose()
-    expect(await ctx.skills.list()).toEqual([])
-    const secondRoot = await temporaryDirectory('hmr-root')
-    await writeFile(join(secondRoot, 'plugin.json'), JSON.stringify({
-      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
-      name: 'replacement',
-    }))
-    await mkdir(join(secondRoot, 'skills', 'replacement-skill'), { recursive: true })
-    await writeFile(join(secondRoot, 'skills', 'replacement-skill', 'SKILL.md'), [
-      '---',
-      'name: replacement-skill',
-      'description: Replacement skill.',
-      '---',
-      'replacement body',
-      '',
-    ].join('\n'))
-    const second = ctx.plugin(AgentPlugins, {
-      root: secondRoot,
-      dataDir: await temporaryDirectory('hmr-second'),
-    })
-    await second
-
-    expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['replacement-skill'])
-    await second.dispose()
-    expect(await ctx.skills.list()).toEqual([])
-    expect(ctx.tools.schemas()).toEqual([])
+    expect(await executeText(ctx, first, tool, 'FIRST')).toBe('FIRST')
+    expect(await executeText(ctx, second, tool, 'SECOND')).toBe('SECOND')
+    await first.ctx.fiber.dispose()
+    expect(ctx.tools.get(tool, first)).toBeUndefined()
+    expect(await executeText(ctx, second, tool, 'SURVIVED')).toBe('SURVIVED')
     await ctx.fiber.dispose()
   }, 20_000)
+
+  it('rejects a second active compatibility row', async () => {
+    const ctx = await mountBase()
+    await ctx.plugin(AgentPlugins, { discovery: { defaults: [] } })
+    await expect(ctx.plugin(AgentPlugins, { discovery: { defaults: [] } })).rejects.toThrow(/only one agent-plugins row/u)
+    await ctx.fiber.dispose()
+  })
 })
 
 describe('adapter exports', () => {
-  it('exposes Loader-compatible named exports and resolves configuration', () => {
-    expect(AgentPlugins.name).toBe('agent-plugins')
-    expect(AgentPlugins.inject).toEqual(['skills', 'tools'])
-    expect(AgentPlugins.Config({ root: runtimeFixture })).toMatchObject({ root: runtimeFixture })
+  it('exposes the reduced Loader configuration', () => {
+    expect(AgentPlugins.inject).toEqual(['agents', 'skills', 'tools', 'commands', 'credentials'])
+    expect(AgentPlugins.Config({ discovery: { defaults: [] } })).toMatchObject({ discovery: { defaults: [] } })
   })
 })
