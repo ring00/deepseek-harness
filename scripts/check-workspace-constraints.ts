@@ -39,6 +39,7 @@ const publicLandlockPackages = new Set([
 /** In-tree compatibility adapters that deliberately remain outside release membership while incubating. */
 const privateIncubationPackages = new Set([
   '@deepseek-ai/dsh-agent-plugins',
+  '@deepseek-ai/dsh-client-ui-agent-plugins',
 ])
 /** Deliberate source payloads whose exact bytes are part of the package's audit surface. */
 const publicationSourceAllowlist: Readonly<Record<string, readonly string[]>> = {

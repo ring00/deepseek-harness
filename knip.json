@@ -160,6 +160,16 @@
         "tests/**/*.tsx"
       ]
     },
+    "packages/client/ui-agent-plugins": {
+      "entry": [
+        "tests/**/*.spec.tsx"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "tests/**/*.tsx"
+      ]
+    },
     "packages/client/ui-goal": {
       "entry": [
         "tests/**/*.spec.tsx"

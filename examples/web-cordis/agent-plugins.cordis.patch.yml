@@ -1,0 +1,6 @@
+# Development-only compatibility overlay.
+- insert:
+    - id: agent-plugins
+      name: '@deepseek-ai/dsh-agent-plugins'
+    - id: ui-agent-plugins
+      name: '@deepseek-ai/dsh-client-ui-agent-plugins'
