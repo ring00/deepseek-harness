@@ -1,0 +1,20 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "runtime": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/server.mjs"],
+      "cwd": "${PLUGIN_DATA}"
+    },
+    "missing-command": {
+      "type": "stdio",
+      "command": "dsh-agent-plugin-command-that-does-not-exist"
+    },
+    "startup-failure": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["-e", "process.exit(1)"]
+    }
+  }
+}

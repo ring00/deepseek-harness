@@ -685,6 +685,19 @@
         "@modelcontextprotocol/server-filesystem"
       ]
     },
+    "packages/compat/agent-plugins": {
+      "entry": [
+        "tests/**/*.spec.ts",
+        "tests/**/*.e2e.ts",
+        "tests/fixtures/complete/server.mjs",
+        "tests/fixtures/runtime/server.mjs",
+        "tests/fixtures/snapshot/server.mjs"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "tests/**/*.{ts,mjs}"
+      ]
+    },
     "packages/client/web": {
       "project": [
         "src/**/*.ts",

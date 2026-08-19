@@ -36,6 +36,10 @@ const publicLandlockPackages = new Set([
   '@deepseek-ai/node-addon-landlock-run-linux-arm64',
   '@deepseek-ai/node-addon-landlock-run-linux-x64',
 ])
+/** In-tree compatibility adapters that deliberately remain outside release membership while incubating. */
+const privateIncubationPackages = new Set([
+  '@deepseek-ai/dsh-agent-plugins',
+])
 /** Deliberate source payloads whose exact bytes are part of the package's audit surface. */
 const publicationSourceAllowlist: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/node-addon-landlock-run': ['src/main.c'],
@@ -145,6 +149,8 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-sandbox-windows-acl': ['lib/runner.js', 'lib/types-*.js'],
   '@deepseek-ai/dsh-skill-badge': ['assets'],
   '@deepseek-ai/dsh-subprocess-local': ['scripts/ensure-spawn-helper.mjs'],
+  // The Agent Plugins 1.0 adapter reads these immutable standards at runtime.
+  '@deepseek-ai/dsh-agent-plugins': ['schemas'],
 }
 
 function sameStringList(actual: readonly string[] | undefined, expected: readonly string[]): boolean {
@@ -226,6 +232,8 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
   const isPublicLandlockPackage = isLandlockPackageDir
     && manifest.name !== undefined
     && publicLandlockPackages.has(manifest.name)
+  const isPrivateIncubationPackage = manifest.name !== undefined
+    && privateIncubationPackages.has(manifest.name)
 
   if (isPublicLandlockPackage) {
     if (manifest.private === true) {
@@ -239,6 +247,13 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
       || manifest.repository.url !== repositoryUrl
       || manifest.repository.directory !== expectedDirectory) {
       errors.push(`${label}: published Landlock package repository must use ${repositoryUrl} with directory ${expectedDirectory} for trusted publishing`)
+    }
+  } else if (isPrivateIncubationPackage) {
+    if (manifest.private !== true) {
+      errors.push(`${label}: incubation package must set "private": true`)
+    }
+    if (manifest.publishConfig !== undefined || manifest.repository !== undefined) {
+      errors.push(`${label}: incubation package must not declare publication metadata`)
     }
   } else if (releaseMemberDirectory.test(dir)) {
     // Release members state that they are publishable: npm refuses a private

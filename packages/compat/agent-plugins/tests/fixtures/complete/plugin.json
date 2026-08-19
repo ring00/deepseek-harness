@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "fixture.plugin",
+  "version": "1.2.3",
+  "extensions": {
+    "com.example.unimplemented": "contents are intentionally not validated"
+  },
+  "futureField": true
+}

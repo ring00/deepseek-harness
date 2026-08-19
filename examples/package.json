@@ -11,6 +11,7 @@
     "@deepseek-ai/cordis-plugin-timer": "workspace:*",
     "@deepseek-ai/dsh-acp-demo": "workspace:*",
     "@deepseek-ai/dsh-agent": "workspace:*",
+    "@deepseek-ai/dsh-agent-plugins": "workspace:*",
     "@deepseek-ai/dsh-agent-loop": "workspace:*",
     "@deepseek-ai/dsh-agent-spine-demo": "workspace:*",
     "@deepseek-ai/dsh-app-boot": "workspace:*",

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "local probe": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/server.mjs", "${PLUGIN_DATA}/state", "${UNRECOGNIZED}"],
+      "env": {
+        "ROOT_VALUE": "${PLUGIN_ROOT}",
+        "DATA_VALUE": "${PLUGIN_DATA}",
+        "ONE_PASS": "${PLUGIN_ROOT}/${PLUGIN_DATA}"
+      },
+      "cwd": "${PLUGIN_DATA}"
+    },
+    "remote": {
+      "type": "streamable-http",
+      "url": "https://example.com/mcp",
+      "headers": {
+        "X-Public-Tenant": "fixture"
+      }
+    },
+    "legacy": {
+      "type": "sse",
+      "url": "https://example.com/sse"
+    },
+    "invalid": {
+      "type": "stdio",
+      "command": "node",
+      "unexpected": true
+    }
+  }
+}

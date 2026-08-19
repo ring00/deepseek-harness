@@ -1,0 +1,20 @@
+# Test-only Agent Plugins composition. The environment owns the absolute plugin
+# and persistent-data paths so the checked-in row never trusts a relative root.
+- id: system-prompt
+  name: '@deepseek-ai/dsh-system-prompt'
+
+- id: tools
+  name: '@deepseek-ai/dsh-tools'
+
+- id: skills
+  name: '@deepseek-ai/dsh-skill'
+
+- id: agent-plugins
+  name: '@deepseek-ai/dsh-agent-plugins'
+  config:
+    root: !!js process.env.DSH_AGENT_PLUGIN_ROOT
+    dataDir: !!js process.env.DSH_AGENT_PLUGIN_DATA
+    mcp:
+      toolCallTimeoutMs: 5000
+      reconnect:
+        enabled: false

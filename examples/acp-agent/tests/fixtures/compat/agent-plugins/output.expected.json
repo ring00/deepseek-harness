@@ -1,0 +1,13 @@
+{
+  "skill": {
+    "name": "snapshot-plugin-skill",
+    "description": "Proves Agent Plugin skills load through an assembled DSH configuration.",
+    "content": "Return `AGENT_PLUGIN_SNAPSHOT_SKILL_OK`.",
+    "source": "agent-plugin",
+    "provider": "agent-plugin:snapshot-compat:<instance>"
+  },
+  "tool": {
+    "name": "mcp__<instance>__probe",
+    "result": "AGENT_PLUGIN_SNAPSHOT_MCP_OK"
+  }
+}

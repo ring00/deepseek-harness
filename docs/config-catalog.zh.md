@@ -166,6 +166,33 @@ export interface Config {
 
 来源：[`packages/core/agent-loop/src/index.ts:255`](../packages/core/agent-loop/src/index.ts)
 
+<a id="deepseek-aidsh-agent-plugins"></a>
+
+## `@deepseek-ai/dsh-agent-plugins`
+
+需要：`skills` · `tools`
+
+```ts config-catalog
+/** Agent Plugins compatibility configuration for one plugin root. */
+export interface Config {
+  /** Required absolute path to one Agent Plugin directory. */
+  readonly root: string
+  /** Persistent writable directory for this instance. */
+  readonly dataDir?: string
+  /** MCP client policy applied to every translated server in this row. */
+  readonly mcp?: {
+    /** Per-tool-call timeout passed to the official MCP client. */
+    readonly toolCallTimeoutMs?: number
+    /** Reconnect policy passed to the official MCP client. */
+    readonly reconnect?: ReconnectConfig
+  }
+}
+```
+
+依赖：[`ReconnectConfig`](../packages/mcp/mcp-client/src/index.ts)
+
+来源：[`packages/compat/agent-plugins/src/index.ts:30`](../packages/compat/agent-plugins/src/index.ts)
+
 <a id="deepseek-aidsh-agent-presets"></a>
 
 ## `@deepseek-ai/dsh-agent-presets`
@@ -1254,7 +1281,7 @@ export interface StreamableHttpConfig {
   serverName: string
   /** MCP endpoint URL. */
   url: string
-  /** Additional headers attached to MCP requests. */
+  /** Additional headers attached only while MCP requests remain on the configured origin. */
   headers: Record<string, string>
   /** Per-tool-call timeout in milliseconds. */
   toolCallTimeoutMs: number

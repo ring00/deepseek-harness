@@ -84,7 +84,7 @@ export interface StreamableHttpConfig {
   serverName: string
   /** MCP endpoint URL. */
   url: string
-  /** Additional headers attached to MCP requests. */
+  /** Additional headers attached only while MCP requests remain on the configured origin. */
   headers: Record<string, string>
   /** Per-tool-call timeout in milliseconds. */
   toolCallTimeoutMs: number

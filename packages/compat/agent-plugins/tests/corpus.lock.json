@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "repository": "https://github.com/agentplugins/agent-plugins-example.git",
+      "commit": "5f3f5084a821aefa792e79500dd8f0462ab83473",
+      "pluginRoot": ".",
+      "license": "MIT",
+      "expected": {
+        "skills": ["migrate-agent-plugin"],
+        "mcp": []
+      }
+    },
+    {
+      "repository": "https://github.com/saadeghi/daisyui.git",
+      "commit": "6681c970eebfcff147cc1a0f5610605a8f937e26",
+      "pluginRoot": ".",
+      "license": "MIT",
+      "expected": {
+        "skills": ["daisyui"],
+        "mcp": []
+      }
+    },
+    {
+      "repository": "https://github.com/aws-samples/sample-spec-driven-presentation-maker.git",
+      "commit": "915fdbf44b7a6bf835df41bedde98099cdfe8f9d",
+      "pluginRoot": ".",
+      "license": "MIT-0",
+      "expected": {
+        "skills": ["sdpm-spec", "sdpm-style", "sdpm-translate", "sdpm-vibe"],
+        "mcp": [{ "key": "sdpm", "transport": "stdio" }]
+      }
+    },
+    {
+      "repository": "https://github.com/czlonkowski/n8n-skills.git",
+      "commit": "67dbc8f4fe1db20497954b4ba0107062dda434d8",
+      "pluginRoot": ".",
+      "license": "MIT",
+      "expected": {
+        "skills": [
+          "n8n-agents",
+          "n8n-binary-and-data",
+          "n8n-code-javascript",
+          "n8n-code-python",
+          "n8n-code-tool",
+          "n8n-error-handling",
+          "n8n-expression-syntax",
+          "n8n-mcp-tools-expert",
+          "n8n-multi-instance",
+          "n8n-node-configuration",
+          "n8n-self-hosting",
+          "n8n-subworkflows",
+          "n8n-validation-expert",
+          "n8n-workflow-patterns",
+          "using-n8n-mcp-skills"
+        ],
+        "mcp": [{ "key": "n8n-mcp", "transport": "streamable-http" }]
+      }
+    }
+  ]
+}
