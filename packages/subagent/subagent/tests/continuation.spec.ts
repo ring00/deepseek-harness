@@ -73,7 +73,7 @@ async function setupWith(adapter: LlmAdapter, options: { persistence?: boolean }
   await ctx.plugin(SubagentSpawn, { providerName: 'spawn' })
   await ctx.plugin(SubagentFork, { providerName: 'fork' })
   ctx.llm.registerAdapter(['mock'], adapter)
-  const parent = ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock' })
+  const parent = (await ctx.agents.create({ sessionId: SessionId('parent'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
   return { ctx, parent, disposePersistence, root }
 }
 
@@ -311,7 +311,7 @@ describe('SubagentRuntime.startContinuable', () => {
     const { ctx } = await setup([])
     // A routeless parent declares no provider/model, and this start declares no
     // persona or tool filter, so the descriptor records only what exists.
-    const routeless = ctx.agentLoop.create(SessionId('routeless'), {})
+    const routeless = (await ctx.agents.create({ sessionId: SessionId('routeless'), agentOptions: {} })).agent
     const started = await ctx.subagents.startContinuable(startSpec(routeless))
     const child = await vi.waitFor(() => {
       const found = ctx.agents.get(started.childId)
@@ -342,7 +342,7 @@ describe('SubagentRuntime.startContinuable', () => {
       },
       execute: () => Promise.resolve({}),
     }))
-    const routeless = ctx.agentLoop.create(SessionId('routeless-filtered'), {})
+    const routeless = (await ctx.agents.create({ sessionId: SessionId('routeless-filtered'), agentOptions: {} })).agent
     const started = await ctx.subagents.startContinuable({
       ...startSpec(routeless),
       request: { prompt: message('filtered work'), parent: routeless, toolFilter: { deny: ['noop'] } },
@@ -366,7 +366,7 @@ describe('SubagentRuntime.startContinuable', () => {
 
   it('cold-resumes without inventing a model route the descriptor never declared', async () => {
     const { ctx, root } = await setup([textResponse('first')])
-    const routeless = ctx.agentLoop.create(SessionId('routeless-resume'), {})
+    const routeless = (await ctx.agents.create({ sessionId: SessionId('routeless-resume'), agentOptions: {} })).agent
     const started = await ctx.subagents.startContinuable(startSpec(routeless))
     await waitNoActivation(ctx, started.childId)
 
@@ -376,7 +376,7 @@ describe('SubagentRuntime.startContinuable', () => {
     await fresh.plugin(AgentLoop, { agents: [] })
     await fresh.plugin(SubagentRuntime)
     await fresh.plugin(SubagentSpawn, { providerName: 'spawn' })
-    const freshParent = fresh.agentLoop.create(SessionId('routeless-resume'), {})
+    const freshParent = (await fresh.agents.create({ sessionId: SessionId('routeless-resume'), agentOptions: {} })).agent
     await followup(fresh, freshParent, started.childId, message('resume routeless'))
 
     const resumed = await vi.waitFor(() => {
@@ -553,7 +553,7 @@ describe('SubagentRuntime.followup residency routing', () => {
     const { ctx, parent } = await setup([textResponse('first')])
     const started = await ctx.subagents.startContinuable(startSpec(parent))
     await waitNoActivation(ctx, started.childId)
-    const stranger = ctx.agentLoop.create(SessionId('stranger'), { provider: 'mock', model: 'mock' })
+    const stranger = (await ctx.agents.create({ sessionId: SessionId('stranger'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     await expect(followup(ctx, stranger, started.childId, message('mine now')))
       .rejects.toThrow(/belongs to another parent session/)
@@ -794,10 +794,7 @@ describe('continuable durability and teardown', () => {
       { chunks: textResponse('sibling follow-up') },
     ])
     const { ctx, parent } = await setupWith(adapter)
-    const siblingParent = ctx.agentLoop.create(
-      SessionId('sibling-parent'),
-      { provider: 'mock', model: 'mock' },
-    )
+    const siblingParent = (await ctx.agents.create({ sessionId: SessionId('sibling-parent'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const target = await ctx.subagents.startContinuable(startSpec(parent))
     const sibling = await ctx.subagents.startContinuable(startSpec(siblingParent))
     await vi.waitFor(() => { expect(adapter.requests).toHaveLength(2) })
@@ -2290,7 +2287,7 @@ describe('continuable errors', () => {
     const serviceFiber = await ctx.plugin(SubagentRuntime)
     await ctx.plugin(SubagentSpawn, { providerName: 'spawn' })
     ctx.llm.registerAdapter(['mock'], adapter)
-    const parent = ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock' })
+    const parent = (await ctx.agents.create({ sessionId: SessionId('parent'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const started = await ctx.subagents.startContinuable(startSpec(parent))
     await vi.waitFor(() => { expect(ctx.agents.get(started.childId)).toBeDefined() })
 
@@ -2448,7 +2445,7 @@ describe('SubagentRuntime.interrupt', () => {
     const siblingStart = await ctx.subagents.startContinuable(startSpec(parent))
     await vi.waitFor(() => { expect(adapter.requests).toHaveLength(2) })
     const sibling = ctx.agents.get(siblingStart.childId)!
-    const stranger = ctx.agentLoop.create(SessionId('stranger'), { provider: 'mock', model: 'mock' })
+    const stranger = (await ctx.agents.create({ sessionId: SessionId('stranger'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const stale = { ...parent, id: parent.id } as unknown as Agent
     const cancelSpy = vi.spyOn(target, 'cancel')
 

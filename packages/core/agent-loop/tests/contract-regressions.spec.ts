@@ -66,7 +66,7 @@ describe('assistant replay provider and model fields', () => {
     response[response.length - 1] = { type: 'finish', reason: { kind: 'stop' }, replayState }
     const adapter = new MockAdapter([response])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('replay-state'), { provider: 'mock', model: 'next-model' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('replay-state'), agentOptions: { provider: 'mock', model: 'next-model' } })).agent
 
     send(agent, 'go')
     await waitForIdle(ctx, agent)
@@ -88,7 +88,7 @@ describe('abort during tool execution ends the turn', () => {
       textResponse('after wake'),
     ])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-abort-injection'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-abort-injection'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     ctx.tools.register(defineContentToolFixture({
       name: 'aborter',
       description: '',
@@ -141,7 +141,7 @@ describe('abort during tool execution ends the turn', () => {
       { type: 'finish', reason: { kind: 'tool-calls' } },
     ] satisfies StreamChunk[]])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-later-abort-context'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-later-abort-context'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     ctx.tools.register(defineContentToolFixture({
       name: 'first',
       description: '',
@@ -190,7 +190,7 @@ describe('abort during tool execution ends the turn', () => {
   it('closes an empty admitted batch as a turn without a step', async () => {
     const adapter = new MockAdapter([textResponse('must not run')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-empty-batch'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-empty-batch'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     ctx.on('agent/pre-step', ({ agent: subject }, next) => {
       if (subject !== agent) return next()
       return Promise.resolve({ kind: 'enter', messages: [] })
@@ -211,9 +211,9 @@ describe('abort during tool execution ends the turn', () => {
     const ctx = await harness(adapter)
     const started = Promise.withResolvers<undefined>()
     let agent!: Agent
-    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
-      agent = inner.agentLoop.create(SessionId('a-dispose-injection'), { provider: 'mock', model: 'mock' })
-    }, { inject: ['agentLoop'] }))
+    const fiber = await ctx.plugin(Object.assign(async (inner: Context) => {
+      agent = (await inner.agents.create({ sessionId: SessionId('a-dispose-injection'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
+    }, { inject: ['agents'] }))
     ctx.tools.register(defineContentToolFixture({
       name: 'waiter',
       description: '',
@@ -267,7 +267,7 @@ describe('abort during tool execution ends the turn', () => {
       textResponse('later turn'),
     ])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-historical-tool-pair'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-historical-tool-pair'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     ctx.tools.register(defineContentToolFixture({
       name: 'aborter',
       description: '',
@@ -321,7 +321,7 @@ describe('steering from late extension points is never stranded', () => {
       textResponse('continued because of steering'),
     ])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     let steeredOnce = false
     ctx.on('agent/turn-stopping', () => {
@@ -345,7 +345,7 @@ describe('plugin exceptions are contained', () => {
   it('a throwing agent/turn-stopping listener ends the turn with an error, loop survives', async () => {
     const adapter = new MockAdapter([textResponse('one'), textResponse('two')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     let threwOnce = false
     ctx.on('agent/turn-stopping', async () => {
@@ -376,9 +376,9 @@ describe('disposal leaves the two-state status contract balanced', () => {
     const ctx = await harness(adapter)
 
     let agent!: Agent
-    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
-      agent = inner.agentLoop.create(SessionId('scoped'), { provider: 'mock', model: 'mock' })
-    }, { inject: ['agentLoop'] }))
+    const fiber = await ctx.plugin(Object.assign(async (inner: Context) => {
+      agent = (await inner.agents.create({ sessionId: SessionId('scoped'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
+    }, { inject: ['agents'] }))
 
     const statuses: string[] = []
     const reasons: TurnEndReason[] = []
@@ -407,9 +407,9 @@ describe('disposal leaves the two-state status contract balanced', () => {
     const ctx = await harness(adapter)
 
     let agent!: Agent
-    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
-      agent = inner.agentLoop.create(SessionId('scoped'), { provider: 'mock', model: 'mock' })
-    }, { inject: ['agentLoop'] }))
+    const fiber = await ctx.plugin(Object.assign(async (inner: Context) => {
+      agent = (await inner.agents.create({ sessionId: SessionId('scoped'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
+    }, { inject: ['agents'] }))
 
     ctx.on('agent/status', ({ status }) => {
       if (status === 'idle') throw new Error('broken status listener')
@@ -439,7 +439,7 @@ describe('adapter registration, routing, and accepted-input ownership', () => {
   it('an agent without a model fails the step with a clear error (not NO_ADAPTER for "default")', async () => {
     const adapter = new MockAdapter([textResponse('never')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), {}) // no model
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: {} })).agent // no model
 
     send(agent, 'go')
     await waitForIdle(ctx, agent)
@@ -455,7 +455,7 @@ describe('adapter registration, routing, and accepted-input ownership', () => {
   it('the agent/request waterfall can supply the model for a model-less agent', async () => {
     const adapter = new MockAdapter([textResponse('routed')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), {}) // no model — router plugin decides
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: {} })).agent // no model — router plugin decides
 
     ctx.on('agent/request', async (_payload, next) => {
       return { ...await next(), provider: 'mock', model: 'mock' }
@@ -470,7 +470,7 @@ describe('adapter registration, routing, and accepted-input ownership', () => {
   it('durable inbox splices carry exact messages and the claimed steer preserves its source', async () => {
     const adapter = new MockAdapter([toolCallResponse('c1', 'noop', {}), textResponse('done')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     ctx.tools.register(defineContentToolFixture({
       name: 'noop',
       description: '',
@@ -516,7 +516,7 @@ describe('turn numbering continues across seeded sessions', () => {
   it('a forked agent continues turn numbers after the seed log', async () => {
     const first = new MockAdapter([textResponse('turn one')])
     const ctx = await harness(first)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     send(agent, 'first')
     await waitForIdle(ctx, agent)
 
@@ -582,7 +582,7 @@ describe('a finish-error stream chunk ends the turn as error, not completed', ()
     ]
     const adapter = new MockAdapter([errorStream])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-finish-error'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-finish-error'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     const reasons: TurnEndReason[] = []
     const errors: unknown[] = []
@@ -613,7 +613,7 @@ describe('a finish-error stream chunk ends the turn as error, not completed', ()
     ]
     const adapter = new MockAdapter([abortedStream])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-finish-aborted'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-finish-aborted'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     const reasons: TurnEndReason[] = []
     ctx.on('session/event', (_s, event) => { if (event.type === 'turn/end') reasons.push(event.data.reason) })
@@ -631,7 +631,7 @@ describe('a finish-error stream chunk ends the turn as error, not completed', ()
     ]
     const adapter = new MockAdapter([errorStream])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-finish-error-nocode'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-finish-error-nocode'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     const reasons: TurnEndReason[] = []
     ctx.on('session/event', (_s, event) => { if (event.type === 'turn/end') reasons.push(event.data.reason) })
@@ -647,7 +647,7 @@ describe('step boundary publication order', () => {
   it('the step/start event is in session.events when its session/event listener fires', async () => {
     const adapter = new MockAdapter([textResponse('done')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-step-order'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-step-order'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     const observed: { turn: number; step: number; lastEventType: string | undefined; sawStepStart: boolean }[] = []
     ctx.on('session/event', (subject, event) => {
@@ -701,7 +701,7 @@ describe('turn and step boundary recovery', () => {
   it('a throwing step/start observer cannot change a successful turn', async () => {
     const adapter = new MockAdapter([textResponse('request completed')])
     const ctx = await balancedHarness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-stepstart'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-stepstart'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     // Session owns post-commit containment. The loop sees a successful append,
     // runs the request, and balances the ordinary step and turn boundaries.
@@ -732,7 +732,7 @@ describe('turn and step boundary recovery', () => {
   it('a pre-commit turn/start rejection leaves no durable turn state', async () => {
     const adapter = new MockAdapter([])
     const ctx = await balancedHarness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-turnstart-veto'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-turnstart-veto'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     let rejected = false
     ctx.on('internal/dispatch', (_mode, name, args) => {
       if (name !== 'session/event') return
@@ -760,7 +760,7 @@ describe('turn and step boundary recovery', () => {
   it('a pre-commit step/start validation failure does not invent a step boundary', async () => {
     const adapter = new MockAdapter([textResponse('never reached')])
     const ctx = await balancedHarness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-stepstart-veto'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-stepstart-veto'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     let rejected = false
     ctx.on('internal/dispatch', (_mode, name, args) => {
       if (name !== 'session/event') return
@@ -789,7 +789,7 @@ describe('turn and step boundary recovery', () => {
   it('a step/end validation failure surfaces the resulting open-step invariant', async () => {
     const adapter = new MockAdapter([textResponse('completed before close validation')])
     const ctx = await balancedHarness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-stepend-veto'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-stepend-veto'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     let rejected = false
     ctx.on('internal/dispatch', (_mode, name, args) => {
       if (name !== 'session/event') return
@@ -826,7 +826,7 @@ describe('turn and step boundary recovery', () => {
     const errorStream: StreamChunk[] = [{ type: 'finish', reason: { kind: 'error', failure: { message: 'provider 500', code: 'SERVER' } } }]
     const adapter = new MockAdapter([errorStream, textResponse('turn 2 ok')])
     const ctx = await balancedHarness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-errorlistener'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-errorlistener'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     let threw = false
     ctx.on('agent/error', () => { if (!threw) { threw = true; throw new Error('boom error-listener') } })
@@ -862,9 +862,9 @@ describe('turn and step boundary recovery', () => {
     const adapter = new MockAdapter(['hang'])
     const ctx = await balancedHarness(adapter)
     let agent!: Agent
-    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
-      agent = inner.agentLoop.create(SessionId('a-dispose'), { provider: 'mock', model: 'mock' })
-    }, { inject: ['agentLoop'] }))
+    const fiber = await ctx.plugin(Object.assign(async (inner: Context) => {
+      agent = (await inner.agents.create({ sessionId: SessionId('a-dispose'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
+    }, { inject: ['agents'] }))
 
     const reasons: TurnEndReason[] = []
     ctx.on('session/event', (_s, event) => { if (event.type === 'turn/end') reasons.push(event.data.reason) })
@@ -888,9 +888,9 @@ describe('turn and step boundary recovery', () => {
     const adapter = new MockAdapter([textResponse('never reached')])
     const ctx = await balancedHarness(adapter)
     let agent!: Agent
-    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
-      agent = inner.agentLoop.create(SessionId('a-prestep-dispose-throw'), { provider: 'mock', model: 'mock' })
-    }, { inject: ['agentLoop'] }))
+    const fiber = await ctx.plugin(Object.assign(async (inner: Context) => {
+      agent = (await inner.agents.create({ sessionId: SessionId('a-prestep-dispose-throw'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
+    }, { inject: ['agents'] }))
 
     let threw = false
     ctx.on('agent/pre-step', (_payload, next) => {
@@ -919,7 +919,7 @@ describe('turn and step boundary recovery', () => {
   it('a throwing turn/start observer cannot starve the loop or later turns', async () => {
     const adapter = new MockAdapter([textResponse('turn 1'), textResponse('turn 2')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-preturn'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-preturn'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     let threw = false
     ctx.on('session/event', (_session, event) => {
@@ -952,7 +952,7 @@ describe('turn and step boundary recovery', () => {
   it('a throwing step/end observer cannot rewrite the turn outcome', async () => {
     const adapter = new MockAdapter([textResponse('all good'), textResponse('turn 2 ok')])
     const ctx = await balancedHarness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-stepend-throw'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-stepend-throw'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     let threw = false
     ctx.on('session/event', (_s, event) => {
@@ -993,7 +993,7 @@ describe('turn and step boundary recovery', () => {
     const errorStream: StreamChunk[] = [{ type: 'finish', reason: { kind: 'error', failure: { message: 'provider 500', code: 'SERVER' } } }]
     const adapter = new MockAdapter([errorStream, textResponse('turn 2 ok')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-stependthrow'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-stependthrow'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     let threw = false
     ctx.on('session/event', (_s, event) => {
@@ -1027,7 +1027,7 @@ describe('turn and step boundary recovery', () => {
     // boundary stays authoritative and the loop continues normally.
     const adapter = new MockAdapter([textResponse('turn 1'), textResponse('turn 2')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a-turnendappend'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-turnendappend'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     let threw = false
     ctx.on('session/event', (_s, event) => {
@@ -1073,7 +1073,7 @@ describe('tool result call identity', () => {
       return Promise.resolve({ kind: 'accept', content: [{ type: 'text', text: 'ok' }] })
     }, { prepend: true })
 
-    const agent = ctx.agentLoop.create(SessionId('a-callid'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a-callid'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     send(agent, 'use tool')
     await waitForIdle(ctx, agent)
 
@@ -1122,9 +1122,9 @@ describe('disposal and cancellation during pre-step assembly', () => {
     })
 
     let agent!: Agent
-    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
-      agent = inner.agentLoop.create(SessionId('a-dispose-assemble'), { provider: 'mock', model: 'mock' })
-    }, { inject: ['agentLoop'] }))
+    const fiber = await ctx.plugin(Object.assign(async (inner: Context) => {
+      agent = (await inner.agents.create({ sessionId: SessionId('a-dispose-assemble'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
+    }, { inject: ['agents'] }))
 
     const reasons: TurnEndReason[] = []
     ctx.on('session/event', (_s, event) => { if (event.type === 'turn/end') reasons.push(event.data.reason) })
@@ -1171,9 +1171,9 @@ describe('disposal and cancellation during pre-step assembly', () => {
     })
 
     let agent!: Agent
-    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
-      agent = inner.agentLoop.create(SessionId('a-cancel-assemble'), { provider: 'mock', model: 'mock' })
-    }, { inject: ['agentLoop'] }))
+    const fiber = await ctx.plugin(Object.assign(async (inner: Context) => {
+      agent = (await inner.agents.create({ sessionId: SessionId('a-cancel-assemble'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
+    }, { inject: ['agents'] }))
 
     const reasons: TurnEndReason[] = []
     ctx.on('session/event', (_s, event) => { if (event.type === 'turn/end') reasons.push(event.data.reason) })
@@ -1221,9 +1221,9 @@ describe('disposal and cancellation during pre-step assembly', () => {
     })
 
     let agent!: Agent
-    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
-      agent = inner.agentLoop.create(SessionId('a-dispose-prestep'), { provider: 'mock', model: 'mock' })
-    }, { inject: ['agentLoop'] }))
+    const fiber = await ctx.plugin(Object.assign(async (inner: Context) => {
+      agent = (await inner.agents.create({ sessionId: SessionId('a-dispose-prestep'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
+    }, { inject: ['agents'] }))
 
     const reasons: TurnEndReason[] = []
     ctx.on('session/event', (_s, event) => { if (event.type === 'turn/end') reasons.push(event.data.reason) })
@@ -1267,9 +1267,9 @@ describe('disposal and cancellation during pre-step assembly', () => {
     })
 
     let agent!: Agent
-    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
-      agent = inner.agentLoop.create(SessionId('a-cancel-prestep'), { provider: 'mock', model: 'mock' })
-    }, { inject: ['agentLoop'] }))
+    const fiber = await ctx.plugin(Object.assign(async (inner: Context) => {
+      agent = (await inner.agents.create({ sessionId: SessionId('a-cancel-prestep'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
+    }, { inject: ['agents'] }))
 
     const reasons: TurnEndReason[] = []
     ctx.on('session/event', (_s, event) => { if (event.type === 'turn/end') reasons.push(event.data.reason) })
@@ -1315,9 +1315,9 @@ describe('disposal and cancellation during pre-step assembly', () => {
     })
 
     let agent!: Agent
-    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
-      agent = inner.agentLoop.create(SessionId('a-dispose-no-leak'), { provider: 'mock', model: 'mock' })
-    }, { inject: ['agentLoop'] }))
+    const fiber = await ctx.plugin(Object.assign(async (inner: Context) => {
+      agent = (await inner.agents.create({ sessionId: SessionId('a-dispose-no-leak'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
+    }, { inject: ['agents'] }))
 
     send(agent, 'go')
     await new Promise(r => setTimeout(r, 50))

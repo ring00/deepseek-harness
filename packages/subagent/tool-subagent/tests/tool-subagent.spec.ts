@@ -1050,7 +1050,7 @@ describe('dsh-tool-subagent continuable background mode', () => {
     ctx.llm.registerAdapter(['mock'], new MockAdapter([
       textResponse('continuable answer'),
     ]))
-    const parent = ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock' })
+    const parent = (await ctx.agents.create({ sessionId: SessionId('parent'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     return { ctx, parent }
   }
 

@@ -110,7 +110,7 @@ async function loopHarness(): Promise<LoopHarness> {
   const adapter = new TextAdapter()
   ctx.llm.registerAdapter([MODEL], adapter)
   const compact = new GatedCompactionEngine(ctx, { auto: false })
-  const agent = ctx.agentLoop.create(SessionId('manual-compact'), { provider: MODEL, model: MODEL })
+  const agent = (await ctx.agents.create({ sessionId: SessionId('manual-compact'), agentOptions: { provider: MODEL, model: MODEL } })).agent
   const log: string[] = []
   ctx.on('session/event', (_session, event) => {
     if (event.type === 'turn/start') log.push('turn/start')

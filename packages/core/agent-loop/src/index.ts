@@ -10,7 +10,6 @@ import { randomUUID } from 'node:crypto'
 import z from '@deepseek-ai/schemastery'
 import { emitAgentEvent } from '@deepseek-ai/dsh-agent'
 import type {
-  Agent,
   AgentFactory,
   AgentHandle,
   AgentOptions,
@@ -580,29 +579,6 @@ export class AgentLoop extends Service implements AgentFactory {
     } catch (error: unknown) {
       machineReady.resolve()
       void dispose()
-      throw error
-    }
-  }
-
-  /**
-   * Create an agent and session under one caller-supplied identity, owned by
-   * the accessing fiber. Constructor-driven config calls mint a fresh combined
-   * id before entering this boundary.
-   * @param id - shared agent/session identity.
-   * @param options - concrete loop options.
-   * @param meta - optional fresh-session workspace metadata.
-   * @returns the published running agent.
-   */
-  create(id: SessionId, options: AgentOptions = {}, meta: Pick<SessionHeader, 'cwd'> = {}): Agent {
-    if (this.runtime.ctx.agents.hasSetupContributions()) {
-      throw new Error('agentLoop.create() cannot bypass registered agent setup; use ctx.agents.create()')
-    }
-    using preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(id, { meta }))
-    const prepared = this.prepare(this.ctx, id, options, preparation.session)
-    try {
-      return prepared.publish('startup').agent
-    } catch (error: unknown) {
-      void prepared.dispose()
       throw error
     }
   }

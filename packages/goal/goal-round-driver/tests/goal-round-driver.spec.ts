@@ -94,10 +94,10 @@ async function harness(script: ScriptEntry[]): Promise<Harness> {
   await ctx.plugin(AgentLoop, { agents: [] })
   const adapter = new ScriptedAdapter(script)
   ctx.llm.registerAdapter(['mock'], adapter)
-  const agent = ctx.agentLoop.create(SessionId(`goal-session-${Math.random()}`), {
+  const agent = (await ctx.agents.create({ sessionId: SessionId(`goal-session-${Math.random()}`), agentOptions: {
     provider: 'mock',
     model: 'mock',
-  })
+  } })).agent
   return { ctx, adapter, agent, driver }
 }
 
@@ -217,7 +217,7 @@ describe('same-session goal driving', () => {
     await ctx.plugin(AgentLoop, { agents: [] })
     const adapter = new ScriptedAdapter([textResponse('after resume')])
     ctx.llm.registerAdapter(['mock'], adapter)
-    const agent = ctx.agentLoop.create(SessionId('goal-session-hot-load'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('goal-session-hot-load'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const created = ctx.goals.create(agent, { objective: 'wait for a human', maxGoalRounds: 1 })
 
     await ctx.plugin(goalSession)

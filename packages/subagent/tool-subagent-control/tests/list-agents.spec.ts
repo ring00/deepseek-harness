@@ -63,7 +63,7 @@ async function setupWith(adapter: MockAdapter | GatedAdapter) {
   await ctx.plugin(SubagentSpawn, { providerName: 'spawn' })
   await ctx.plugin(tool)
   ctx.llm.registerAdapter(['mock'], adapter)
-  const parent = ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock' })
+  const parent = (await ctx.agents.create({ sessionId: SessionId('parent'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
   parkParent(ctx, parent)
   return { ctx, parent, adapter }
 }

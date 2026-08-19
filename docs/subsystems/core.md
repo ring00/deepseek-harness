@@ -348,17 +348,6 @@ Concrete agent factory and driver service.
 
 ```ts cordis-catalog
 /**
- * Create an agent and session under one caller-supplied identity, owned by
- * the accessing fiber. Constructor-driven config calls mint a fresh combined
- * id before entering this boundary.
- * @param id - shared agent/session identity.
- * @param options - concrete loop options.
- * @param meta - optional fresh-session workspace metadata.
- * @returns the published running agent.
- */
-create(id: SessionId, options: AgentOptions = {}, meta: Pick<SessionHeader, 'cwd'> = {}): Agent
-
-/**
  * Create an owned agent on a caller-supplied session id.
  * @param ownerCtx - caller context that structurally owns the lifecycle.
  * @param options - identities, session seed/metadata, loop options, setup, and cancellation.
@@ -375,9 +364,7 @@ async createAgent(ownerCtx: Context, options: CreateAgentOptions): Promise<Agent
 async resume(ownerCtx: Context, options: ResumeAgentOptions): Promise<AgentHandle>
 ```
 
-Types: [SessionHeader](persistence.md)
-
-Source: [`packages/core/agent-loop/src/index.ts:296`](../../packages/core/agent-loop/src/index.ts)
+Source: [`packages/core/agent-loop/src/index.ts:295`](../../packages/core/agent-loop/src/index.ts)
 
 <a id="ctxagentpresets--agentpresets"></a>
 
@@ -623,6 +610,16 @@ withoutInitiator<T>(operation: () => T): T
 setFactory(factory: AgentFactory): () => void
 
 /**
+ * Register ordered composition that every subsequently created or resumed
+ * Agent receives after its caller-owned setup and before publication.
+ * Removal prevents new calls, aborts active calls, and waits for them to
+ * settle; a completed call revalidates the registration at publication.
+ * @param setup - abort-aware composition of one unpublished Agent scope.
+ * @returns the effect disposer that removes and drains this contribution.
+ */
+registerSetup(setup: AgentSetup): () => Promise<void>
+
+/**
  * Create and publish a new agent through the registered factory.
  * Distinct from {@link register} (which records an already-constructed
  * agent): this constructs the agent and its session. Rejects if no factory is
@@ -631,7 +628,7 @@ setFactory(factory: AgentFactory): () => void
  * @param options - shared identity, session seed/metadata, and agent options.
  * @returns the handle after setup, rollback-covered publication, and loop start complete.
  */
-async create(options: CreateAgentOptions): Promise<AgentHandle>
+create(options: CreateAgentOptions): Promise<AgentHandle>
 
 /**
  * Load a persisted session and resume an agent on it through the registered
@@ -640,7 +637,7 @@ async create(options: CreateAgentOptions): Promise<AgentHandle>
  * @param options - persisted identity, configuration, and optional setup.
  * @returns the handle after setup, rollback-covered publication, and loop start complete.
  */
-async resume(options: ResumeAgentOptions): Promise<AgentHandle>
+resume(options: ResumeAgentOptions): Promise<AgentHandle>
 
 /**
  * Register a live agent. Throws if an agent with the same id is already
@@ -720,7 +717,7 @@ list(): Agent[]
 roots(): Agent[]
 ```
 
-Source: [`packages/core/agent/src/index.ts:256`](../../packages/core/agent/src/index.ts)
+Source: [`packages/core/agent/src/index.ts:268`](../../packages/core/agent/src/index.ts)
 
 <a id="agent-events"></a>
 
@@ -1043,7 +1040,7 @@ A declarative agent entry failed before it could publish a live agent. Consumers
 'agent-loop/config-start-failed'(payload: { sessionId: SessionId; error: unknown }): void
 ```
 
-Source: [`packages/core/agent-loop/src/index.ts:183`](../../packages/core/agent-loop/src/index.ts)
+Source: [`packages/core/agent-loop/src/index.ts:182`](../../packages/core/agent-loop/src/index.ts)
 
 <a id="agent-preset-events"></a>
 

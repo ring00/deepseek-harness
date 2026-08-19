@@ -46,11 +46,7 @@ async function setupWalled(script: Script): Promise<{ ctx: Context; parent: Agen
   await ctx.plugin(ApprovalService)
   await ctx.plugin(AgentLoop, { agents: [] })
   ctx.llm.registerAdapter(['mock'], new MockAdapter(script))
-  const parent = ctx.agentLoop.create(
-    SessionId('parent'),
-    { provider: 'mock', model: 'mock' },
-    { cwd: workspace },
-  )
+  const parent = (await ctx.agents.create({ sessionId: SessionId('parent'), agentOptions: { provider: 'mock', model: 'mock' }, meta: { cwd: workspace } })).agent
   return { ctx, parent }
 }
 

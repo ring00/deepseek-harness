@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -55,7 +56,7 @@ async function setup(
   await ctx.plugin(SubagentSpawn, { providerName: 'spawn' })
   await ctx.plugin(SubagentFork, { providerName: 'fork' })
   ctx.llm.registerAdapter(['mock'], new MockAdapter(script))
-  const parent = ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock' })
+  const parent = (await ctx.agents.create({ sessionId: SessionId('parent'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
   return { ctx, parent }
 }
 
@@ -64,7 +65,7 @@ const testSignal = new AbortController().signal
 /** Start one continuable child through the real service path and await Activation release. */
 async function startChild(
   ctx: Context,
-  parent: ReturnType<Context['agentLoop']['create']>,
+  parent: Agent,
   label: string,
 ): Promise<SessionId> {
   const started = await ctx.subagents.startContinuable({

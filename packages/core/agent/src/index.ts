@@ -408,7 +408,7 @@ export class AgentRegistry extends Service {
    * @param setup - abort-aware composition of one unpublished Agent scope.
    * @returns the effect disposer that removes and drains this contribution.
    */
-  registerSetup(setup: AgentSetup): () => void {
+  registerSetup(setup: AgentSetup): () => Promise<void> {
     const contribution: SetupContribution = {
       setup,
       abort: new AbortController(),
@@ -425,13 +425,7 @@ export class AgentRegistry extends Service {
         await Promise.allSettled(contribution.pending)
       }
     }, 'agents.registerSetup()')
-    // oxlint-disable-next-line typescript/no-misused-promises -- Cordis owns async effect teardown through this exact disposer
     return dispose
-  }
-
-  /** @internal Whether the unsupported synchronous test constructor would bypass setup. */
-  hasSetupContributions(): boolean {
-    return this.setupContributions.length !== 0
   }
 
   /** Return the active creation factory. */
@@ -449,7 +443,7 @@ export class AgentRegistry extends Service {
    * @param options - shared identity, session seed/metadata, and agent options.
    * @returns the handle after setup, rollback-covered publication, and loop start complete.
    */
-  async create(options: CreateAgentOptions): Promise<AgentHandle> {
+  create(options: CreateAgentOptions): Promise<AgentHandle> {
     const ownerCtx = this.ctx
     // Re-trace a Service-backed factory through the accessing context
     // explicitly. This preserves AgentLoop's dependency origin while binding
@@ -457,11 +451,11 @@ export class AgentRegistry extends Service {
     // capability and need no Cordis tracker magic.
     const { target } = this.requireFactory()
     const receiver = getTraceable(ownerCtx, target)
-    // oxlint-disable-next-line typescript/unbound-method -- Reflect.apply intentionally supplies the caller-traced receiver
-    return Reflect.apply(target.createAgent, receiver, [ownerCtx, {
+    const setup = this.composeSetup(options.setup)
+    return receiver.createAgent(ownerCtx, {
       ...options,
-      setup: this.composeSetup(options.setup),
-    }])
+      ...setup === undefined ? {} : { setup },
+    })
   }
 
   /**
@@ -471,15 +465,15 @@ export class AgentRegistry extends Service {
    * @param options - persisted identity, configuration, and optional setup.
    * @returns the handle after setup, rollback-covered publication, and loop start complete.
    */
-  async resume(options: ResumeAgentOptions): Promise<AgentHandle> {
+  resume(options: ResumeAgentOptions): Promise<AgentHandle> {
     const ownerCtx = this.ctx
     const { target } = this.requireFactory()
     const receiver = getTraceable(ownerCtx, target)
-    // oxlint-disable-next-line typescript/unbound-method -- Reflect.apply intentionally supplies the caller-traced receiver
-    return Reflect.apply(target.resume, receiver, [ownerCtx, {
+    const setup = this.composeSetup(options.setup)
+    return receiver.resume(ownerCtx, {
       ...options,
-      setup: this.composeSetup(options.setup),
-    }])
+      ...setup === undefined ? {} : { setup },
+    })
   }
 
   /** Compose caller setup followed by a stable registration-order snapshot. */

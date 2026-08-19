@@ -58,7 +58,7 @@ async function setup(options: { load?: boolean; config?: tool.Config } = {}) {
     : await ctx.plugin(tool, options.config ?? { reportDelivery: 'quiet' })
   const adapter = new HeldAdapter()
   ctx.llm.registerAdapter(['mock'], adapter)
-  const parent = ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock' })
+  const parent = (await ctx.agents.create({ sessionId: SessionId('parent'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
   cleanups.push(async () => {
     adapter.release()
     await ctx.fiber.dispose()

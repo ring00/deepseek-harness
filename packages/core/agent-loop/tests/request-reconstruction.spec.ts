@@ -79,7 +79,7 @@ describe('request stability across the loop', () => {
     ])
     const ctx = await harness(adapter)
     registerEcho(ctx)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     send(agent, 'go')
     await waitForIdle(ctx, agent)
@@ -100,7 +100,7 @@ describe('request stability across the loop', () => {
   it('a later turn append-extends the previous turn (one conversation, one log)', async () => {
     const adapter = new MockAdapter([textResponse('one'), textResponse('two')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     send(agent, 'first')
     await waitForIdle(ctx, agent)
@@ -121,7 +121,7 @@ describe('request stability across the loop', () => {
     }
     const adapter = new MockAdapter([textResponse('one'), textResponse('two')], reasoning)
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('effort'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('effort'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     ctx.on('agent/request', async ({ turn }, next) => {
       const config = await next()
       return turn === 2 ? { ...config, reasoningEffort: ReasoningEffortId('max') } : config
@@ -172,10 +172,10 @@ describe('request stability across the loop', () => {
   it('logs an adapter-owned maxTokens default before dispatch', async () => {
     const adapter = new MockAdapter([textResponse('bounded')], undefined, 256_000)
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('adapter-max-tokens'), {
+    const agent = (await ctx.agents.create({ sessionId: SessionId('adapter-max-tokens'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
 
     send(agent, 'use the adapter output limit')
     await waitForIdle(ctx, agent)
@@ -194,10 +194,10 @@ describe('request stability across the loop', () => {
       ['deepseek', deepseek],
       ['other', other],
     ])
-    const agent = ctx.agentLoop.create(SessionId('adapter-max-tokens-switch'), {
+    const agent = (await ctx.agents.create({ sessionId: SessionId('adapter-max-tokens-switch'), agentOptions: {
       provider: 'deepseek',
       model: 'deepseek-model',
-    })
+    } })).agent
     ctx.on('agent/request', async ({ turn }, next) => {
       const config = await next()
       return turn === 2
@@ -227,11 +227,11 @@ describe('request stability across the loop', () => {
       ['deepseek', deepseek],
       ['other', other],
     ])
-    const agent = ctx.agentLoop.create(SessionId('explicit-max-tokens-switch'), {
+    const agent = (await ctx.agents.create({ sessionId: SessionId('explicit-max-tokens-switch'), agentOptions: {
       provider: 'deepseek',
       model: 'deepseek-model',
       maxTokens: 4_096,
-    })
+    } })).agent
     ctx.on('agent/request', async ({ turn }, next) => {
       const config = await next()
       return turn === 2
@@ -281,7 +281,7 @@ describe('request stability across the loop', () => {
       defaultEffort: ReasoningEffortId('max'),
     })
     const disposeFirst = ctx.llm.registerAdapter(['mock'], first)
-    const agent = ctx.agentLoop.create(SessionId('effort-hmr'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('effort-hmr'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     send(agent, 'go')
     await started.promise
@@ -350,10 +350,10 @@ describe('request stability across the loop', () => {
         }
       }([])
       const ctx = await harness(adapter)
-      const agent = ctx.agentLoop.create(SessionId(`reasoning-${kind}`), {
+      const agent = (await ctx.agents.create({ sessionId: SessionId(`reasoning-${kind}`), agentOptions: {
         provider: 'mock',
         model: 'mock',
-      })
+      } })).agent
 
       send(agent, 'go')
       await waitForIdle(ctx, agent)
@@ -384,10 +384,10 @@ describe('request stability across the loop', () => {
         yield* textResponse('owned')
       })()
     })
-    const agent = ctx.agentLoop.create(SessionId('listener-owned'), {
+    const agent = (await ctx.agents.create({ sessionId: SessionId('listener-owned'), agentOptions: {
       provider: 'listener',
       model: 'virtual',
-    })
+    } })).agent
 
     send(agent, 'go')
     await waitForIdle(ctx, agent)
@@ -406,7 +406,7 @@ describe('request stability across the loop', () => {
   it('a compaction replace rewrites the resend, and the log explains it', async () => {
     const adapter = new MockAdapter([textResponse('one'), textResponse('two')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     send(agent, 'first')
     await waitForIdle(ctx, agent)
@@ -433,7 +433,7 @@ describe('request stability across the loop', () => {
   it('a real system-prompt change is a full changed-header snapshot; a stable prompt logs nothing', async () => {
     const adapter = new MockAdapter([textResponse('one'), textResponse('two'), textResponse('three')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     send(agent, 'first')
     await waitForIdle(ctx, agent)
@@ -457,7 +457,7 @@ describe('request stability across the loop', () => {
   it('an inject() during the agent/request waterfall joins the NEXT request (the step/start boundary)', async () => {
     const adapter = new MockAdapter([textResponse('one'), textResponse('two')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     let injected = false
     ctx.on('agent/request', async (_payload, next) => {
@@ -485,7 +485,7 @@ describe('request stability across the loop', () => {
   it('a mutation attempt on the frozen request content throws into the step (loud, not silent)', async () => {
     const adapter = new MockAdapter([textResponse('one')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     ctx.on('llm/stream', (options, next) => {
       // The historical failure mode this design kills: a listener rewriting
@@ -509,7 +509,7 @@ describe('request stability across the loop', () => {
   it('a fresh loop instance over a seeded log anchors with a resume snapshot and stays cache-aligned', async () => {
     const adapter = new MockAdapter([textResponse('one')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('gen1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('gen1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     send(agent, 'first')
     await waitForIdle(ctx, agent)
 
@@ -537,7 +537,7 @@ describe('request stability across the loop', () => {
   it('a delegating listener cannot mutate the seed through next() — the fold stays log-true', async () => {
     const adapter = new MockAdapter([textResponse('one'), textResponse('two')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     ctx.on('agent/request', async (_payload, next) => {
       const config = await next()
@@ -571,7 +571,7 @@ describe('request stability across the loop', () => {
     ])
     const ctx = await harness(adapter)
     registerEcho(ctx)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('a1'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     send(agent, 'go')
     await waitForIdle(ctx, agent)
@@ -632,7 +632,7 @@ describe('request/context capacity records', () => {
   it('records capacity once and skips it while the route is unchanged', async () => {
     const adapter = capacityAdapter({ mock: 128_000 }, [textResponse('a'), textResponse('b')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('capacity-dedup'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('capacity-dedup'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
 
     send(agent, 'first')
     await waitForIdle(ctx, agent)
@@ -654,7 +654,7 @@ describe('request/context capacity records', () => {
       [textResponse('a'), textResponse('b')],
     )
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('capacity-switch'), { provider: 'mock', model: 'small' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('capacity-switch'), agentOptions: { provider: 'mock', model: 'small' } })).agent
 
     send(agent, 'first')
     await waitForIdle(ctx, agent)
@@ -671,7 +671,7 @@ describe('request/context capacity records', () => {
 
   it('records and deduplicates a route whose adapter advertises no capacity', async () => {
     const ctx = await harness(new MockAdapter([textResponse('a'), textResponse('b')]))
-    const agent = ctx.agentLoop.create(SessionId('capacity-absent'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('capacity-absent'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     send(agent, 'first')
     await waitForIdle(ctx, agent)
     send(agent, 'second')
@@ -684,7 +684,7 @@ describe('request/context capacity records', () => {
   it('clears a previous capacity when the next route advertises none', async () => {
     const adapter = capacityAdapter({ known: 64_000 }, [textResponse('a'), textResponse('b')])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('capacity-clear'), { provider: 'mock', model: 'known' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('capacity-clear'), agentOptions: { provider: 'mock', model: 'known' } })).agent
     let model = 'known'
     ctx.on('agent/request', ({ agent: subject }, next) => subject === agent
       ? Promise.resolve({ provider: 'mock', model })

@@ -127,8 +127,8 @@ describe('AgentLoop initiator scope', () => {
     await ctx.plugin(AgentLoop, { agents: [] })
     ctx.llm.registerAdapter(['mock'], adapter)
 
-    const a = ctx.agentLoop.create(SessionId('a'), { provider: 'mock', model: 'mock' })
-    const b = ctx.agentLoop.create(SessionId('b'), { provider: 'mock', model: 'mock' })
+    const a = (await ctx.agents.create({ sessionId: SessionId('a'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
+    const b = (await ctx.agents.create({ sessionId: SessionId('b'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const idleA = waitForIdle(ctx, a)
     const idleB = waitForIdle(ctx, b)
     send(a, 'a')
@@ -151,7 +151,7 @@ describe('AgentLoop initiator scope', () => {
       textResponse('second done'),
     ])
     const { ctx } = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('signal-owner'), { provider: 'mock', model: 'mock' })
+    const agent = (await ctx.agents.create({ sessionId: SessionId('signal-owner'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     let signals: AbortSignal[] = []
     let preStepSignals: AbortSignal[] = []
     const capture = (signal: AbortSignal | undefined): void => {

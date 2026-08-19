@@ -182,10 +182,10 @@ describe('provider-routed retry policy', () => {
     ;({ ctx: context } = await harness(adapter, {
       mock: normalConfig({ retryableCodes: ['SERVER', 'RATE_LIMIT'] }),
     }, undefined, { random: () => 0.5 }))
-    const agent = context.agentLoop.create(SessionId('retry-success'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-success'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const scheduled = waitForRetry(context, agent, 1)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
@@ -233,7 +233,7 @@ describe('provider-routed retry policy', () => {
     // adapters' empty-completion classification end to end (finish-chunk error
     // delivery, not a thrown stream error).
     ;({ ctx: context } = await harness(adapter))
-    const agent = context.agentLoop.create(SessionId('retry-empty-response'), { provider: 'mock', model: 'mock' })
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-empty-response'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const scheduled = waitForRetry(context, agent, 1)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
@@ -275,7 +275,7 @@ describe('provider-routed retry policy', () => {
         return [{ type: 'text', text: 'unexpected' }]
       },
     }))
-    const agent = context.agentLoop.create(SessionId('retry-partial'), { provider: 'mock', model: 'mock' })
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-partial'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const scheduled = waitForRetry(context, agent, 1)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
@@ -321,7 +321,7 @@ describe('provider-routed retry policy', () => {
     }) }, undefined, {
       random: () => samples.shift() ?? 0.5,
     }))
-    const agent = context.agentLoop.create(SessionId('retry-exhausted'), { provider: 'mock', model: 'mock' })
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-exhausted'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const first = waitForRetry(context, agent, 1)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
@@ -352,7 +352,7 @@ describe('provider-routed retry policy', () => {
     ;({ ctx: context } = await harness(adapter, { mock: normalConfig({
       backoff: { initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 1 },
     }) }, undefined, { random: () => 0 }))
-    const agent = context.agentLoop.create(SessionId('retry-zero-delay'), { provider: 'mock', model: 'mock' })
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-zero-delay'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const scheduled = waitForRetry(context, agent, 1)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
@@ -373,7 +373,7 @@ describe('provider-routed retry policy', () => {
     ;({ ctx: context } = await harness(accepted, { mock: normalConfig({
       backoff: { jitterRatio: 1 },
     }) }))
-    const acceptedAgent = context.agentLoop.create(SessionId('retry-after-accepted'), { provider: 'mock', model: 'mock' })
+    const acceptedAgent = (await context.agents.create({ sessionId: SessionId('retry-after-accepted'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const scheduled = waitForRetry(context, acceptedAgent, 1)
     acceptedAgent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
     expect((await scheduled).data.delayMs).toBe(2_000)
@@ -387,7 +387,7 @@ describe('provider-routed retry policy', () => {
       new LlmError('wait too long', 'RATE_LIMIT', { providerRetryAfterMs: 10_001 }),
     ])
     ;({ ctx: context } = await harness(rejected))
-    const rejectedAgent = context.agentLoop.create(SessionId('retry-after-rejected'), { provider: 'mock', model: 'mock' })
+    const rejectedAgent = (await context.agents.create({ sessionId: SessionId('retry-after-rejected'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const rejectedIdle = waitForIdle(context, rejectedAgent)
     rejectedAgent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
     await rejectedIdle
@@ -406,10 +406,10 @@ describe('provider-routed retry policy', () => {
       maxDelayMs: 4,
       jitterRatio: 0.5,
     }) }, undefined, { random: () => 1 }))
-    const agent = context.agentLoop.create(SessionId('retry-always-over-cap'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-always-over-cap'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const scheduled = waitForRetry(context, agent, 1)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
@@ -425,7 +425,7 @@ describe('provider-routed retry policy', () => {
     vi.useFakeTimers()
     const adapter = new ScriptedAdapter([new LlmError('bad key', 'AUTH')])
     ;({ ctx: context } = await harness(adapter))
-    const agent = context.agentLoop.create(SessionId('retry-auth'), { provider: 'mock', model: 'mock' })
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-auth'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const idle = waitForIdle(context, agent)
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
     await idle
@@ -439,10 +439,10 @@ describe('provider-routed retry policy', () => {
     const mounted = await harness(adapter, { mock: alwaysConfig() })
     context = mounted.ctx
     mounted.disposeAdapter()
-    const agent = context.agentLoop.create(SessionId('retry-no-serving-policy'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-no-serving-policy'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const idle = waitForIdle(context, agent)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'missing route' }], source: { kind: 'user' } }))
@@ -471,19 +471,19 @@ describe('provider-routed retry policy', () => {
       other: alwaysConfig({ initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 }),
     }))
 
-    const normalAgent = context.agentLoop.create(SessionId('retry-provider-normal'), {
+    const normalAgent = (await context.agents.create({ sessionId: SessionId('retry-provider-normal'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const normalIdle = waitForIdle(context, normalAgent)
     normalAgent.followup(createUserMessage({ content: [{ type: 'text', text: 'normal' }], source: { kind: 'user' } }))
     await normalIdle
     expect(normalAgent.session.events.some(event => event.type === 'llm/retry')).toBe(false)
 
-    const alwaysAgent = context.agentLoop.create(SessionId('retry-provider-always'), {
+    const alwaysAgent = (await context.agents.create({ sessionId: SessionId('retry-provider-always'), agentOptions: {
       provider: 'other',
       model: 'mock',
-    })
+    } })).agent
     const scheduled = waitForRetry(context, alwaysAgent, 1)
     alwaysAgent.followup(createUserMessage({ content: [{ type: 'text', text: 'always' }], source: { kind: 'user' } }))
     expect((await scheduled).data).toMatchObject({
@@ -513,10 +513,10 @@ describe('provider-routed retry policy', () => {
         provider: 'other',
       }))
     }))
-    const agent = context.agentLoop.create(SessionId('retry-provider-rerouted'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-provider-rerouted'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const scheduled = waitForRetry(context, agent, 1)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'reroute' }], source: { kind: 'user' } }))
@@ -550,10 +550,10 @@ describe('provider-routed retry policy', () => {
         provider: adapter.requests.length === 0 ? 'mock' : 'other',
       }))
     }))
-    const agent = context.agentLoop.create(SessionId('retry-provider-budgets'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-provider-budgets'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const idle = waitForIdle(context, agent)
 
     agent.followup(createUserMessage({
@@ -598,10 +598,10 @@ describe('provider-routed retry policy', () => {
         maxDelayMs: 1,
       }) })
       context = mounted.ctx
-      const agent = context.agentLoop.create(SessionId('retry-serving-registration'), {
+      const agent = (await context.agents.create({ sessionId: SessionId('retry-serving-registration'), agentOptions: {
         provider: 'mock',
         model: 'mock',
-      })
+      } })).agent
       const scheduled = waitForRetry(context, agent, 1)
       agent.followup(createUserMessage({
         content: [{ type: 'text', text: 'replace while in flight' }],
@@ -665,10 +665,10 @@ describe('provider-routed retry policy', () => {
       maxDelayMs: 4,
       jitterRatio: 0.1,
     }) }, undefined, { random: () => 1 }))
-    const agent = context.agentLoop.create(SessionId('retry-always-unbounded'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-always-unbounded'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const idle = waitForIdle(context, agent)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'keep trying' }], source: { kind: 'user' } }))
@@ -702,10 +702,10 @@ describe('provider-routed retry policy', () => {
       initialDelayMs: 1,
       maxDelayMs: 1,
     }) }))
-    const agent = context.agentLoop.create(SessionId('retry-always-context-isolation'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-always-context-isolation'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const scheduled = waitForRetry(context, agent, 1)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'safe input' }], source: { kind: 'user' } }))
@@ -731,10 +731,10 @@ describe('provider-routed retry policy', () => {
     ])
     ;({ ctx: context } = await harness(adapter, { mock: alwaysConfig() }))
     context.on('agent/request-error', async () => ({ kind: 'retry' }))
-    const agent = context.agentLoop.create(SessionId('retry-always-composition'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-always-composition'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const idle = waitForIdle(context, agent)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'recover' }], source: { kind: 'user' } }))
@@ -758,10 +758,10 @@ describe('provider-routed retry policy', () => {
       maxDelayMs: 1,
     }) }))
     context.on('agent/request-error', failDownstream)
-    const agent = context.agentLoop.create(SessionId('retry-always-downstream-error'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-always-downstream-error'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const scheduled = waitForRetry(context, agent, 1)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'recover' }], source: { kind: 'user' } }))
@@ -781,7 +781,7 @@ describe('provider-routed retry policy', () => {
     ])
     const mounted = await harness(adapter, { mock: alwaysConfig() })
     context = mounted.ctx
-    const agent = context.agentLoop.create(SessionId('retry-hmr'), { provider: 'mock', model: 'mock' })
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-hmr'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const scheduled = waitForRetry(context, agent, 1)
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
     await scheduled
@@ -809,10 +809,10 @@ describe('provider-routed retry policy', () => {
       order.push('downstream')
       return { kind: 'retry' }
     })
-    const agent = context.agentLoop.create(SessionId('retry-delegated-disposal'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-delegated-disposal'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const idle = waitForIdle(context, agent).then(() => { order.push('idle') })
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
     await entered.promise
@@ -849,10 +849,10 @@ describe('provider-routed retry policy', () => {
       order.push('downstream')
       return decision
     })
-    const agent = context.agentLoop.create(SessionId('retry-delegated-cancel'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-delegated-cancel'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const idle = waitForIdle(context, agent).then(() => { order.push('idle') })
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
     await entered.promise
@@ -888,10 +888,10 @@ describe('provider-routed retry policy', () => {
       entered.resolve(undefined)
       return downstream.promise
     })
-    const agent = context.agentLoop.create(SessionId('retry-delegated-sync-cancel'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-delegated-sync-cancel'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const idle = waitForIdle(context, agent)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
@@ -932,10 +932,10 @@ describe('provider-routed retry policy', () => {
       downstreamCalls += 1
       return next()
     })
-    const agent = context.agentLoop.create(SessionId('retry-captured-disposal'), {
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-captured-disposal'), agentOptions: {
       provider: 'mock',
       model: 'mock',
-    })
+    } })).agent
     const idle = waitForIdle(context, agent)
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
     await captured.promise
@@ -956,7 +956,7 @@ describe('provider-routed retry policy', () => {
       textResponse('must not run'),
     ])
     ;({ ctx: context } = await harness(adapter, { mock: alwaysConfig() }))
-    const agent = context.agentLoop.create(SessionId('retry-cancel'), { provider: 'mock', model: 'mock' })
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-cancel'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const scheduled = waitForRetry(context, agent, 1)
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
     await scheduled
@@ -987,7 +987,7 @@ describe('provider-routed retry policy', () => {
         return next()
       })
     }))
-    const agent = context.agentLoop.create(SessionId('retry-pre-cancel'), { provider: 'mock', model: 'mock' })
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-pre-cancel'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     const idle = waitForIdle(context, agent)
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
@@ -1008,7 +1008,7 @@ describe('provider-routed retry policy', () => {
       textResponse('must not run'),
     ])
     ;({ ctx: context } = await harness(adapter))
-    const agent = context.agentLoop.create(SessionId('retry-event-cancel'), { provider: 'mock', model: 'mock' })
+    const agent = (await context.agents.create({ sessionId: SessionId('retry-event-cancel'), agentOptions: { provider: 'mock', model: 'mock' } })).agent
     context.on('session/event', (session, event) => {
       if (session === agent.session && event.type === 'llm/retry') agent.cancel({ kind: 'user' })
     })
