@@ -162,34 +162,61 @@ export interface Config {
 
 Depends on: [`AgentOptions`](subsystems/core.md) · [`SessionId`](subsystems/core.md)
 
-Source: [`packages/core/agent-loop/src/index.ts:255`](../packages/core/agent-loop/src/index.ts)
+Source: [`packages/core/agent-loop/src/index.ts:254`](../packages/core/agent-loop/src/index.ts)
 
 <a id="deepseek-aidsh-agent-plugins"></a>
 
 ## `@deepseek-ai/dsh-agent-plugins`
 
-Requires: `skills` · `tools`
+Requires: `agents` · `skills` · `tools` · `commands` · `credentials`
 
 ```ts config-catalog
-/** Agent Plugins compatibility configuration for one plugin root. */
+/** Agent Plugins discovery and MCP policy. */
 export interface Config {
-  /** Required absolute path to one Agent Plugin directory. */
-  readonly root: string
-  /** Persistent writable directory for this instance. */
-  readonly dataDir?: string
-  /** MCP client policy applied to every translated server in this row. */
-  readonly mcp?: {
-    /** Per-tool-call timeout passed to the official MCP client. */
-    readonly toolCallTimeoutMs?: number
-    /** Reconnect policy passed to the official MCP client. */
-    readonly reconnect?: ReconnectConfig
+  /** Installation families and custom locations scanned once for each new or resumed agent. */
+  discovery?: {
+    /** Built-in source families; defaults to DSH and Claude, while an empty list disables both. */
+    defaults?: BuiltinSource[]
+    /** Absolute home-directory overrides for built-in DSH or Claude sources. */
+    homes?: Partial<Record<BuiltinSource, string>>
+    /** Highest-priority plugin roots or immediate-child containers, evaluated in declaration order. */
+    sources?: DiscoverySource[]
+  }
+  /** Persistent plugin-data root; defaults to `$DSH_HOME/agent-plugins/data`. */
+  dataRoot?: string
+  /** MCP client policy forwarded to every accepted server. */
+  mcp?: {
+    /** Maximum duration of one MCP tool call in milliseconds. */
+    toolCallTimeoutMs?: number
+    /** Reconnection policy for the official MCP client. */
+    reconnect?: ReconnectConfig
   }
 }
+
+/** Built-in installation families understood by the MVP. */
+export type BuiltinSource = 'dsh' | 'claude'
+
+/** One configured plugin root or immediate-child container. */
+export interface DiscoverySource {
+  /** Stable source identifier used in diagnostics and persistent data identity. */
+  readonly id: string
+  /** Absolute path or path relative to the agent project root. */
+  readonly path: string
+  /** Path anchor; defaults to absolute. */
+  readonly base?: 'absolute' | 'project'
+  /** Whether the path is one plugin or contains immediate plugin children. */
+  readonly layout?: 'plugin' | 'children'
+  /** Manifest dialect to select; auto prefers Agent Plugins over Claude. */
+  readonly format?: PluginFormat
+}
+
+/** Manifest dialect selected for one plugin root. */
+export type PluginFormat = 'auto' | 'agent-plugins' | 'claude'
 ```
 
 Depends on: [`ReconnectConfig`](../packages/mcp/mcp-client/src/index.ts)
 
-Source: [`packages/compat/agent-plugins/src/index.ts:30`](../packages/compat/agent-plugins/src/index.ts)
+Source: [`packages/compat/agent-plugins/src/index.ts:29`](../packages/compat/agent-plugins/src/index.ts)
 
 <a id="deepseek-aidsh-agent-presets"></a>
 
@@ -1302,7 +1329,7 @@ export interface ReconnectConfig {
 }
 ```
 
-Source: [`packages/mcp/mcp-client/src/index.ts:98`](../packages/mcp/mcp-client/src/index.ts)
+Source: [`packages/mcp/mcp-client/src/index.ts:104`](../packages/mcp/mcp-client/src/index.ts)
 
 <a id="deepseek-aidsh-message-feedback"></a>
 
@@ -3058,6 +3085,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-locale` ([`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts))
 - `@deepseek-ai/dsh-client-modules` — requires `webServer` · `loader` ([`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts))
 - `@deepseek-ai/dsh-client-runtime` ([`packages/client/runtime/src/index.ts`](../packages/client/runtime/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-agent-plugins` ([`packages/client/ui-agent-plugins/src/index.ts`](../packages/client/ui-agent-plugins/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-agent-preset` ([`packages/client/ui-agent-preset/src/index.ts`](../packages/client/ui-agent-preset/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-commands` ([`packages/client/ui-commands/src/index.ts`](../packages/client/ui-commands/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-conversation` ([`packages/client/ui-conversation/src/index.ts`](../packages/client/ui-conversation/src/index.ts))

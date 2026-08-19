@@ -111,12 +111,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
-        signature: 'create(id: SessionId, options: AgentOptions = {}, meta: Pick<SessionHeader, \'cwd\'> = {}): Agent',
-        description: 'Create an agent and session under one caller-supplied identity, owned by the accessing fiber. Constructor-driven config calls mint a fresh combined id before entering this boundary.',
-        parameters: [{ name: 'id', description: 'shared agent/session identity.' }, { name: 'options', description: 'concrete loop options.' }, { name: 'meta', description: 'optional fresh-session workspace metadata.' }],
-        returns: 'the published running agent.',
-      },
-      {
         signature: 'async createAgent(ownerCtx: Context, options: CreateAgentOptions): Promise<AgentHandle>',
         description: 'Create an owned agent on a caller-supplied session id.',
         parameters: [{ name: 'ownerCtx', description: 'caller context that structurally owns the lifecycle.' }, { name: 'options', description: 'identities, session seed/metadata, loop options, setup, and cancellation.' }],
@@ -127,6 +121,29 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Resume an owned agent from the configured persistence service.',
         parameters: [{ name: 'ownerCtx', description: 'caller context that owns load, setup, and the live lifecycle.' }, { name: 'options', description: 'persisted identity, loop options, setup, and cancellation.' }],
         returns: 'the published handle.',
+      },
+    ],
+  },
+  {
+    key: 'agentPlugin',
+    summary: 'Immutable compatibility inventory for each live agent generation.',
+    description: 'Immutable compatibility inventory for each live agent generation.',
+    methods: [
+      {
+        signature: 'set(agent: Agent, snapshot: AgentPluginSnapshot): void',
+        description: 'Publish one generation immediately before its agent becomes visible.',
+        parameters: [{ name: 'agent', description: 'exact agent that owns the generation.' }, { name: 'snapshot', description: 'immutable inventory to publish.' }],
+      },
+      {
+        signature: 'remove(agent: Agent, snapshot: AgentPluginSnapshot): void',
+        description: 'Remove one exact generation during row or agent teardown.',
+        parameters: [{ name: 'agent', description: 'exact agent that owned the generation.' }, { name: 'snapshot', description: 'exact snapshot being disposed.' }],
+      },
+      {
+        signature: '@Remote(\'list\') list(agent: Agent): AgentPluginSnapshot',
+        description: 'Read the selected live agent\'s current generation.',
+        parameters: [{ name: 'agent', description: 'selected live agent.' }],
+        returns: 'its inventory or an empty snapshot.',
       },
     ],
   },
@@ -249,13 +266,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the disposer that clears the factory slot. The exact Cordis effect disposer (single-shot): composite (generator) effects may yield it directly — exact identity nests the teardown in order.',
       },
       {
-        signature: 'async create(options: CreateAgentOptions): Promise<AgentHandle>',
+        signature: 'registerSetup(setup: AgentSetup): () => Promise<void>',
+        description: 'Register ordered composition that every subsequently created or resumed Agent receives after its caller-owned setup and before publication. Removal prevents new calls, aborts active calls, and waits for them to settle; a completed call revalidates the registration at publication.',
+        parameters: [{ name: 'setup', description: 'abort-aware composition of one unpublished Agent scope.' }],
+        returns: 'the effect disposer that removes and drains this contribution.',
+      },
+      {
+        signature: 'create(options: CreateAgentOptions): Promise<AgentHandle>',
         description: 'Create and publish a new agent through the registered factory. Distinct from register (which records an already-constructed agent): this constructs the agent and its session. Rejects if no factory is registered or creation/setup fails. The resolved AgentHandle lets the owner tear down exactly this agent.',
         parameters: [{ name: 'options', description: 'shared identity, session seed/metadata, and agent options.' }],
         returns: 'the handle after setup, rollback-covered publication, and loop start complete.',
       },
       {
-        signature: 'async resume(options: ResumeAgentOptions): Promise<AgentHandle>',
+        signature: 'resume(options: ResumeAgentOptions): Promise<AgentHandle>',
         description: 'Load a persisted session and resume an agent on it through the registered factory. Rejects if no factory is registered; the factory rejects if session persistence is not configured or persistence/setup fails.',
         parameters: [{ name: 'options', description: 'persisted identity, configuration, and optional setup.' }],
         returns: 'the handle after setup, rollback-covered publication, and loop start complete.',
@@ -2640,12 +2663,32 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AgentOptions {\n    provider?: string;\n    model?: string;\n    maxTokens?: number;\n}',
   },
   {
+    name: 'AgentPluginEntry',
+    declaration: 'export interface AgentPluginEntry {\n    readonly qualifiedId: AgentPluginQualifiedId;\n    readonly name: string;\n    readonly version?: string;\n    readonly format: AgentPluginFormat;\n    readonly source: string;\n    readonly status: AgentPluginStatus;\n    readonly skillCount: number;\n    readonly commandCount: number;\n    readonly mcpServerCount: number;\n    readonly error?: string;\n}',
+  },
+  {
+    name: 'AgentPluginFormat',
+    declaration: 'export type AgentPluginFormat = \'agent-plugins\' | \'claude\';',
+  },
+  {
+    name: 'AgentPluginQualifiedId',
+    declaration: 'export type AgentPluginQualifiedId = Branded<\'AgentPluginQualifiedId\'>;',
+  },
+  {
+    name: 'AgentPluginSnapshot',
+    declaration: 'export interface AgentPluginSnapshot {\n    readonly entries: readonly AgentPluginEntry[];\n}',
+  },
+  {
+    name: 'AgentPluginStatus',
+    declaration: 'export type AgentPluginStatus = \'loaded\' | \'partial\' | \'failed\';',
+  },
+  {
     name: 'AgentPreset',
     declaration: 'export interface AgentPreset {\n    readonly id: string;\n    readonly trust: PresetTrust;\n    readonly path: string;\n    readonly name?: string;\n    readonly description?: string;\n    readonly order?: number;\n    readonly broken?: string;\n}',
   },
   {
     name: 'AgentSetup',
-    declaration: 'export type AgentSetup = (agentCtx: Context) => AgentSetupCommit | Promise<AgentSetupCommit | void> | void;',
+    declaration: 'export type AgentSetup = (agentCtx: Context, signal: AbortSignal) => AgentSetupCommit | Promise<AgentSetupCommit | void> | void;',
   },
   {
     name: 'AgentSetupCommit',

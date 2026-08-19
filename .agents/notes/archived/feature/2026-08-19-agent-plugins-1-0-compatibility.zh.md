@@ -1,6 +1,7 @@
 # Agent Note: Agent Plugins 1.0 兼容性以私有 Cordis 插件孵化
 
 Status: implemented
+Archived: 2026-08-19
 
 [English](2026-08-19-agent-plugins-1-0-compatibility.md) | 中文
 

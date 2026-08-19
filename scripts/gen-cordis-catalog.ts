@@ -51,6 +51,7 @@ export { REGION_BEGIN, REGION_END }
  */
 export const SERVICE_PAGE: Record<string, string> = {
   agentLoop: 'core.md',
+  agentPlugin: 'extensions.md',
   agentDefaultModel: 'core.md',
   agentPresets: 'core.md',
   agents: 'core.md',
@@ -219,7 +220,9 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   AgentHandle: 'core.md',
   ModelSelection: 'core.md',
   AgentOptions: 'core.md',
+  AgentSetup: 'core.md',
   AgentStatus: 'core.md',
+  AgentPluginSnapshot: '../../packages/compat/agent-plugins/README.md',
   ContentBlock: 'llm-streaming.md',
   CreateAgentOptions: 'core.md',
   GenerateOptions: 'llm-streaming.md',

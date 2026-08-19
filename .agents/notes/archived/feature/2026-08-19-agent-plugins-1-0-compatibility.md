@@ -1,6 +1,7 @@
 # Agent Note: Agent Plugins 1.0 compatibility incubates as a private Cordis plugin
 
 Status: implemented
+Archived: 2026-08-19
 
 English | [中文](2026-08-19-agent-plugins-1-0-compatibility.zh.md)
 
