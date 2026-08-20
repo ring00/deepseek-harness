@@ -1,15 +1,35 @@
-.view { box-sizing: border-box; height: 100%; overflow: auto; padding: 20px; color: var(--dsw-alias-label-primary); }
-.view header, .summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.view { box-sizing: border-box; height: 100%; overflow: auto; padding: 24px; color: var(--dsw-alias-label-primary); }
+.view header, .summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .view h2 { margin: 0; font-size: 18px; }
-.view ul { display: grid; gap: 10px; margin: 16px 0 0; padding: 0; list-style: none; }
-.view li { border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; padding: 14px; background: var(--dsw-alias-bg-layer-2); }
-.summary { flex-wrap: wrap; justify-content: flex-start; }
-.summary strong { margin-right: auto; }
-.summary span { border-radius: 999px; padding: 2px 8px; background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.view ul { display: grid; gap: 12px; margin: 18px 0 0; padding: 0; list-style: none; }
+.view li { border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; padding: 16px; background: var(--dsw-alias-bg-layer-2); transition: border-color 160ms var(--ds-ease-in-out), background-color 160ms var(--ds-ease-in-out); }
+.view li:hover { border-color: var(--dsw-alias-label-dimmed); background: var(--dsw-alias-bg-layer-3); }
+.identity { display: grid; min-width: 0; gap: 3px; margin-right: auto; }
+.identity strong { overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.identity span { color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+.badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.badges span { border-radius: 999px; padding: 2px 8px; background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-secondary); font-size: 12px; white-space: nowrap; }
+.view li[data-status='loaded'] .status { color: var(--dsw-alias-state-success-primary); }
+.view li[data-status='failed'] .status { color: var(--dsw-alias-state-error-primary); }
 .view p { margin: 8px 0 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; }
 .notice { line-height: 1.45; }
-.toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--dsw-alias-label-secondary); font-size: 12px; }
-.toggle span { padding: 0; background: none; }
+.refresh { border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; padding: 5px 12px; color: var(--dsw-alias-label-secondary); background: transparent; cursor: pointer; font: inherit; font-size: 13px; }
+.refresh:hover { border-color: var(--dsw-alias-label-dimmed); color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.refresh:focus-visible, .toggle:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.toggle { display: inline-flex; flex: none; align-items: center; gap: 8px; border: 0; padding: 2px 0; color: var(--dsw-alias-label-secondary); background: transparent; cursor: pointer; font: inherit; font-size: 12px; }
+.toggle:disabled { color: var(--dsw-alias-label-dimmed); cursor: not-allowed; }
+.toggleText { min-width: 48px; text-align: right; }
+.toggleTrack { position: relative; width: 34px; height: 18px; border-radius: 999px; background: var(--dsw-alias-border-l2); transition: background-color 160ms var(--ds-ease-in-out); }
+.toggleThumb { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--dsw-alias-bg-layer-1); box-shadow: 0 1px 2px var(--dsw-alias-border-l1); transition: transform 160ms var(--ds-ease-in-out); }
+.toggle[aria-checked='true'] .toggleTrack { background: var(--dsw-alias-state-business-primary); }
+.toggle[aria-checked='true'] .toggleThumb { transform: translateX(16px); }
+.toggle[aria-busy='true'] { opacity: .6; }
 .pending { color: var(--dsw-alias-label-secondary) !important; }
 .state { padding: 24px; color: var(--dsw-alias-label-tertiary); }
 .error { overflow-wrap: anywhere; }
+
+@media (max-width: 720px) {
+  .view { padding: 16px; }
+  .summary { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+  .badges { order: 3; width: 100%; justify-content: flex-start; }
+}

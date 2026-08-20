@@ -89,7 +89,7 @@ describe('AgentPluginsView', () => {
     const second = vi.fn(() => Promise.resolve<AgentPluginSnapshot>({ writable: true, entries: [snapshot.entries[1]!] }))
     const view = render(<AgentPluginsView {...props(true, first)} />)
     expect(await screen.findByText('daisyui')).toBeDefined()
-    expect(view.container.textContent).toMatchInlineSnapshot('"Agent PluginsRefreshDiscovered plugins are enabled by default. Skills affect model instructions, stdio MCP runs host code, and changes apply to new sessions.daisyuiProject DSHagent-pluginsLoadedEnabled1 skills · 0 commands · 0 MCP servers5.0.0"')
+    expect(view.container.textContent).toMatchInlineSnapshot('"Agent PluginsRefreshDiscovered plugins are enabled by default. Skills affect model instructions, stdio MCP runs host code, and changes apply to new sessions.daisyui5.0.0Project DSHagent-pluginsLoadedEnabled1 skills · 0 commands · 0 MCP servers"')
 
     view.rerender(<AgentPluginsView {...props(true, second)} />)
     expect(await screen.findByText('commit-commands')).toBeDefined()
@@ -107,7 +107,7 @@ describe('AgentPluginsView', () => {
     expect(screen.getByText(en.enabledNext)).toBeDefined()
     expect(screen.getByText(en.disabledNext)).toBeDefined()
     expect(screen.queryByText('1 skills', { exact: false })).toBeNull()
-    for (const toggle of screen.getAllByRole('switch')) expect((toggle as HTMLInputElement).disabled).toBe(true)
+    for (const toggle of screen.getAllByRole('switch')) expect((toggle as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('saves pessimistically and adopts the returned snapshot', async () => {
@@ -116,7 +116,7 @@ describe('AgentPluginsView', () => {
     render(<AgentPluginsView {...props(true, () => Promise.resolve(snapshot), setEnabled)} />)
     const toggle = await screen.findByRole('switch', { name: `${en.enabled} daisyui` })
     fireEvent.click(toggle)
-    expect((toggle as HTMLInputElement).disabled).toBe(true)
+    expect((toggle as HTMLButtonElement).disabled).toBe(true)
     expect(setEnabled).toHaveBeenCalledWith(snapshot.entries[0]!.qualifiedId, false)
     await act(async () => { resolve({ writable: true, entries: [{ ...snapshot.entries[0]!, enabled: false }] }) })
     expect(screen.getByText(en.disabledNext)).toBeDefined()
@@ -127,7 +127,7 @@ describe('AgentPluginsView', () => {
     render(<AgentPluginsView {...props(true, () => Promise.resolve(snapshot), setEnabled)} />)
     fireEvent.click(await screen.findByRole('switch', { name: `${en.enabled} daisyui` }))
     expect((await screen.findByRole('alert')).textContent).toBe(en.toggleError)
-    expect(screen.getByRole<HTMLInputElement>('switch', { name: `${en.enabled} daisyui` }).checked).toBe(true)
+    expect(screen.getByRole('switch', { name: `${en.enabled} daisyui` }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('refreshes the snapshot without rescanning through another operation', async () => {

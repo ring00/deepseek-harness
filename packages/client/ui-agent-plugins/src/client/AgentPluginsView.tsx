@@ -45,9 +45,9 @@ export function AgentPluginsView({ active, list, setEnabled, t }: AgentPluginsVi
   }
   if (state.status === 'inactive') return <p className={css.state}>{t('inactive')}</p>
   if (state.status === 'loading') return <p className={css.state} aria-busy="true">{t('loading')}</p>
-  if (state.status === 'error') return <div className={css.state}><p role="alert">{t('error')}</p><button type="button" onClick={refresh}>{t('refresh')}</button></div>
+  if (state.status === 'error') return <div className={css.state}><p role="alert">{t('error')}</p><button className={css.refresh} type="button" onClick={refresh}>{t('refresh')}</button></div>
   return <section className={css.view} aria-label={t('tab')}>
-    <header><h2>{t('tab')}</h2><button type="button" onClick={refresh}>{t('refresh')}</button></header>
+    <header><h2>{t('tab')}</h2><button className={css.refresh} type="button" onClick={refresh}>{t('refresh')}</button></header>
     <p className={css.notice}>{t('notice')}</p>
     {mutationError ? <p className={css.error} role="alert">{t('toggleError')}</p> : null}
     {state.snapshot.entries.length === 0 ? <p className={css.state}>{t('empty')}</p> : <ul>
@@ -55,17 +55,21 @@ export function AgentPluginsView({ active, list, setEnabled, t }: AgentPluginsVi
         const currentEnabled = entry.status !== 'disabled'
         return <li key={entry.qualifiedId} data-status={entry.status}>
           <div className={css.summary}>
-            <strong>{entry.name}</strong><span>{entry.source}</span><span>{entry.format}</span>
-            <span>{t(statusKey[entry.status])}</span>
-            <label className={css.toggle}><span>{t('enabled')}</span><input
-              type="checkbox" role="switch" aria-label={`${t('enabled')} ${entry.name}`} checked={entry.enabled}
+            <div className={css.identity}>
+              <strong>{entry.name}</strong>{entry.version === undefined ? null : <span>{entry.version}</span>}
+            </div>
+            <div className={css.badges}><span>{entry.source}</span><span>{entry.format}</span>
+              <span className={css.status}>{t(statusKey[entry.status])}</span></div>
+            <button className={css.toggle} type="button" role="switch" aria-label={`${t('enabled')} ${entry.name}`}
+              aria-checked={entry.enabled} aria-busy={saving === entry.qualifiedId || undefined}
               disabled={!state.snapshot.writable || saving !== undefined}
-              onChange={(event) => { void toggle(entry.qualifiedId, event.currentTarget.checked) }}
-            /></label>
+              onClick={() => { void toggle(entry.qualifiedId, !entry.enabled) }}
+            ><span className={css.toggleText}>{t(entry.enabled ? 'enabled' : 'disabled')}</span>
+              <span className={css.toggleTrack} aria-hidden="true"><span className={css.toggleThumb} /></span>
+            </button>
           </div>
           {entry.skillCount === undefined ? null : <p>{entry.skillCount} {t('skills')} · {entry.commandCount} {t('commands')} · {entry.mcpServerCount} {t('mcpServers')}</p>}
           {entry.enabled === currentEnabled ? null : <p className={css.pending}>{t(entry.enabled ? 'enabledNext' : 'disabledNext')}</p>}
-          {entry.version === undefined ? null : <p>{entry.version}</p>}
           {entry.error === undefined ? null : <p className={css.error}>{entry.error}</p>}
         </li>})}
     </ul>}
