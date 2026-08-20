@@ -79,7 +79,7 @@ describe('AgentPluginsView', () => {
     mount(true)
     expect(await screen.findByText('daisyui')).toBeDefined()
     expect(screen.getByText('commit-commands')).toBeDefined()
-    expect(screen.getByText('Claude user')).toBeDefined()
+    expect(screen.getByText((_, element) => element?.tagName === 'P' && element.textContent === 'Claude Code·Claude user')).toBeDefined()
     expect(screen.getByText('3 commands', { exact: false })).toBeDefined()
     expect(screen.getByText('hooks are unsupported')).toBeDefined()
   })
@@ -89,11 +89,11 @@ describe('AgentPluginsView', () => {
     const second = vi.fn(() => Promise.resolve<AgentPluginSnapshot>({ writable: true, entries: [snapshot.entries[1]!] }))
     const view = render(<AgentPluginsView {...props(true, first)} />)
     expect(await screen.findByText('daisyui')).toBeDefined()
-    expect(view.container.textContent).toMatchInlineSnapshot('"Agent PluginsRefreshDiscovered plugins are enabled by default. Skills affect model instructions, stdio MCP runs host code, and changes apply to new sessions.daisyui5.0.0Project DSHagent-pluginsLoadedEnabled1 skills · 0 commands · 0 MCP servers"')
+    expect(view.container.textContent).toMatchInlineSnapshot('"Agent PluginsRefreshDiscovered plugins are enabled by default. Skills affect model instructions, stdio MCP runs host code, and changes apply to new sessions.daisyui5.0.0Next sessionsAgent Plugin 1.0·Project DSHCurrent sessionLoaded·1 skill · 0 commands · 0 MCP servers"')
 
     view.rerender(<AgentPluginsView {...props(true, second)} />)
     expect(await screen.findByText('commit-commands')).toBeDefined()
-    expect(view.container.textContent).toMatchInlineSnapshot('"Agent PluginsRefreshDiscovered plugins are enabled by default. Skills affect model instructions, stdio MCP runs host code, and changes apply to new sessions.commit-commandsClaude userclaudePartialEnabled0 skills · 3 commands · 0 MCP servershooks are unsupported"')
+    expect(view.container.textContent).toMatchInlineSnapshot('"Agent PluginsRefreshDiscovered plugins are enabled by default. Skills affect model instructions, stdio MCP runs host code, and changes apply to new sessions.commit-commandsNext sessionsClaude Code·Claude userCurrent sessionPartial·0 skills · 3 commands · 0 MCP servershooks are unsupported"')
   })
 
   it('renders disabled, pending, and read-only states without invented counts', async () => {
@@ -114,7 +114,7 @@ describe('AgentPluginsView', () => {
     let resolve!: (value: AgentPluginSnapshot) => void
     const setEnabled = vi.fn(() => new Promise<AgentPluginSnapshot>((value) => { resolve = value }))
     render(<AgentPluginsView {...props(true, () => Promise.resolve(snapshot), setEnabled)} />)
-    const toggle = await screen.findByRole('switch', { name: `${en.enabled} daisyui` })
+    const toggle = await screen.findByRole('switch', { name: `${en.nextSessions}: daisyui` })
     fireEvent.click(toggle)
     expect((toggle as HTMLButtonElement).disabled).toBe(true)
     expect(setEnabled).toHaveBeenCalledWith(snapshot.entries[0]!.qualifiedId, false)
@@ -125,9 +125,9 @@ describe('AgentPluginsView', () => {
   it('preserves the snapshot and reports a toggle write error', async () => {
     const setEnabled = vi.fn(() => Promise.reject(new Error('read only')))
     render(<AgentPluginsView {...props(true, () => Promise.resolve(snapshot), setEnabled)} />)
-    fireEvent.click(await screen.findByRole('switch', { name: `${en.enabled} daisyui` }))
+    fireEvent.click(await screen.findByRole('switch', { name: `${en.nextSessions}: daisyui` }))
     expect((await screen.findByRole('alert')).textContent).toBe(en.toggleError)
-    expect(screen.getByRole('switch', { name: `${en.enabled} daisyui` }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('switch', { name: `${en.nextSessions}: daisyui` }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('refreshes the snapshot without rescanning through another operation', async () => {
