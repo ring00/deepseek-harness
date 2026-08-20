@@ -185,6 +185,7 @@ describe('per-agent compatibility generations', () => {
 describe('adapter exports', () => {
   it('exposes the reduced Loader configuration', () => {
     expect(AgentPlugins.inject).toEqual(['agents', 'skills', 'tools', 'commands', 'credentials', 'settings'])
+    expect(AgentPlugins.Config({})).toMatchObject({ discovery: { defaults: ['dsh', 'agents', 'claude'] } })
     expect(AgentPlugins.Config({ discovery: { defaults: [] } })).toMatchObject({ discovery: { defaults: [] } })
   })
 })

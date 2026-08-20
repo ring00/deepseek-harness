@@ -63,7 +63,7 @@ const Reconnect: Schema<ReconnectConfig> = z.object({
 /** Loader configuration schema. */
 export const Config: Schema<Config> = z.object({
   discovery: z.object({
-    defaults: z.array(z.union(['dsh', 'agents', 'claude'] as const)),
+    defaults: z.array(z.union(['dsh', 'agents', 'claude'] as const)).default(['dsh', 'agents', 'claude']),
     homes: z.object({ dsh: z.string(), agents: z.string(), claude: z.string() }),
     sources: z.array(Source),
   }),
