@@ -443,7 +443,7 @@ export class AgentRegistry extends Service {
    * @param options - shared identity, session seed/metadata, and agent options.
    * @returns the handle after setup, rollback-covered publication, and loop start complete.
    */
-  create(options: CreateAgentOptions): Promise<AgentHandle> {
+  async create(options: CreateAgentOptions): Promise<AgentHandle> {
     const ownerCtx = this.ctx
     // Re-trace a Service-backed factory through the accessing context
     // explicitly. This preserves AgentLoop's dependency origin while binding
@@ -452,7 +452,7 @@ export class AgentRegistry extends Service {
     const { target } = this.requireFactory()
     const receiver = getTraceable(ownerCtx, target)
     const setup = this.composeSetup(options.setup)
-    return receiver.createAgent(ownerCtx, {
+    return await receiver.createAgent(ownerCtx, {
       ...options,
       ...setup === undefined ? {} : { setup },
     })
@@ -465,12 +465,12 @@ export class AgentRegistry extends Service {
    * @param options - persisted identity, configuration, and optional setup.
    * @returns the handle after setup, rollback-covered publication, and loop start complete.
    */
-  resume(options: ResumeAgentOptions): Promise<AgentHandle> {
+  async resume(options: ResumeAgentOptions): Promise<AgentHandle> {
     const ownerCtx = this.ctx
     const { target } = this.requireFactory()
     const receiver = getTraceable(ownerCtx, target)
     const setup = this.composeSetup(options.setup)
-    return receiver.resume(ownerCtx, {
+    return await receiver.resume(ownerCtx, {
       ...options,
       ...setup === undefined ? {} : { setup },
     })

@@ -278,13 +278,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the effect disposer that removes and drains this contribution.',
       },
       {
-        signature: 'create(options: CreateAgentOptions): Promise<AgentHandle>',
+        signature: 'async create(options: CreateAgentOptions): Promise<AgentHandle>',
         description: 'Create and publish a new agent through the registered factory. Distinct from register (which records an already-constructed agent): this constructs the agent and its session. Rejects if no factory is registered or creation/setup fails. The resolved AgentHandle lets the owner tear down exactly this agent.',
         parameters: [{ name: 'options', description: 'shared identity, session seed/metadata, and agent options.' }],
         returns: 'the handle after setup, rollback-covered publication, and loop start complete.',
       },
       {
-        signature: 'resume(options: ResumeAgentOptions): Promise<AgentHandle>',
+        signature: 'async resume(options: ResumeAgentOptions): Promise<AgentHandle>',
         description: 'Load a persisted session and resume an agent on it through the registered factory. Rejects if no factory is registered; the factory rejects if session persistence is not configured or persistence/setup fails.',
         parameters: [{ name: 'options', description: 'persisted identity, configuration, and optional setup.' }],
         returns: 'the handle after setup, rollback-covered publication, and loop start complete.',

@@ -628,7 +628,7 @@ registerSetup(setup: AgentSetup): () => Promise<void>
  * @param options - shared identity, session seed/metadata, and agent options.
  * @returns the handle after setup, rollback-covered publication, and loop start complete.
  */
-create(options: CreateAgentOptions): Promise<AgentHandle>
+async create(options: CreateAgentOptions): Promise<AgentHandle>
 
 /**
  * Load a persisted session and resume an agent on it through the registered
@@ -637,7 +637,7 @@ create(options: CreateAgentOptions): Promise<AgentHandle>
  * @param options - persisted identity, configuration, and optional setup.
  * @returns the handle after setup, rollback-covered publication, and loop start complete.
  */
-resume(options: ResumeAgentOptions): Promise<AgentHandle>
+async resume(options: ResumeAgentOptions): Promise<AgentHandle>
 
 /**
  * Register a live agent. Throws if an agent with the same id is already
