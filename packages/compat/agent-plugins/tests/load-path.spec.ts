@@ -10,7 +10,7 @@ describe('dsh-agent-plugins real Loader export path', () => {
     const unwrapped = loader.unwrapExports(agentPlugins) as Record<string, unknown>
     expect(unwrapped).toBe(agentPlugins)
     expect(unwrapped.name).toBe('agent-plugins')
-    expect(unwrapped.inject).toEqual(['agents', 'skills', 'tools', 'commands', 'credentials'])
+    expect(unwrapped.inject).toEqual(['agents', 'skills', 'tools', 'commands', 'credentials', 'settings'])
     expect(typeof unwrapped.apply).toBe('function')
     expect(unwrapped.Config).toBeDefined()
   })
