@@ -12,7 +12,7 @@ const driver = fileURLToPath(new URL('./fixtures/compat/agent-plugins/run.ts', i
 const config = fileURLToPath(new URL('./fixtures/compat/agent-plugins/cordis.yml', import.meta.url))
 const expected = fileURLToPath(new URL('./fixtures/compat/agent-plugins/output.expected.json', import.meta.url))
 
-it('discovers a project Claude plugin and exercises its skill, command, and MCP server through the real Loader', async () => {
+it('discovers a project .agents plugin and exercises its skill, command, and MCP server through the real Loader', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'dsh-agent-plugins-snapshot-'))
   const projectDir = await mkdtemp(join(tmpdir(), 'dsh-agent-plugins-project-'))
   try {
@@ -28,6 +28,7 @@ it('discovers a project Claude plugin and exercises its skill, command, and MCP 
         DSH_AGENT_PLUGIN_PROJECT: projectDir,
         DSH_AGENT_PLUGIN_DATA: dataDir,
         DSH_HOME: join(dataDir, 'dsh-home'),
+        DSH_SETTINGS_PATH: join(dataDir, 'settings.yaml'),
         TSX_TSCONFIG_PATH: fileURLToPath(new URL('../../../tsconfig.json', import.meta.url)),
       },
     })

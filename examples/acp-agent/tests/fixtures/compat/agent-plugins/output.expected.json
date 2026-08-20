@@ -1,10 +1,11 @@
 {
   "inventory": {
-    "qualifiedId": "project:claude:snapshot-claude",
+    "qualifiedId": "project:agents:snapshot-claude",
     "name": "snapshot-claude",
     "version": "1.0.0",
     "format": "claude",
-    "source": "Project Claude",
+    "source": "Project Agents",
+    "enabled": true,
     "status": "partial",
     "skillCount": 1,
     "commandCount": 1,
@@ -25,7 +26,7 @@
     "prompt": "Verify \"quoted value\" from <project> with [Claude dynamic command omitted; use ordinary DSH tools and approvals if needed.].\n",
     "source": {
       "kind": "agent-plugin-command",
-      "plugin": "project:claude:snapshot-claude",
+      "plugin": "project:agents:snapshot-claude",
       "command": "snapshot-claude:check"
     }
   },

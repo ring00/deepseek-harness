@@ -18,6 +18,7 @@
     { "path": "../../util/home-paths" },
     { "path": "../../subprocess/subprocess" },
     { "path": "../../skill/skill" },
+    { "path": "../../settings/settings" },
     { "path": "../../mcp/mcp-client" },
     { "path": "../../runtime-diagnostics/invariants" }
   ]

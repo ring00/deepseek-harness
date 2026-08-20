@@ -16,15 +16,16 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.agentPlugin` — `AgentPluginInventory`
 
-Immutable compatibility inventory for each live agent generation.
+Workspace plugin catalog with desired state over each immutable live generation.
 
 ```ts cordis-catalog
 /**
  * Publish one generation immediately before its agent becomes visible.
  * @param agent - exact agent that owns the generation.
+ * @param workspaceKey - path-free settings bucket for the generation.
  * @param snapshot - immutable inventory to publish.
  */
-set(agent: Agent, snapshot: AgentPluginSnapshot): void
+set(agent: Agent, workspaceKey: string, snapshot: AgentPluginSnapshot): void
 
 /**
  * Remove one exact generation during row or agent teardown.
@@ -34,16 +35,25 @@ set(agent: Agent, snapshot: AgentPluginSnapshot): void
 remove(agent: Agent, snapshot: AgentPluginSnapshot): void
 
 /**
- * Read the selected live agent's current generation.
+ * Read the selected live agent's catalog and current desired states.
  * @param agent - selected live agent.
  * @returns its inventory or an empty snapshot.
  */
 @Remote('list') list(agent: Agent): AgentPluginSnapshot
+
+/**
+ * Persist one workspace activation choice without changing the live generation.
+ * @param agent - selected live agent whose catalog authorizes the plugin id.
+ * @param qualifiedId - discovered plugin identity.
+ * @param enabled - desired state for future agent generations.
+ * @returns the current generation with its updated desired states.
+ */
+@Remote('setEnabled') async setEnabled(agent: Agent, qualifiedId: AgentPluginQualifiedId, enabled: boolean): Promise<AgentPluginSnapshot>
 ```
 
-Types: [Agent](core.md) · [AgentPluginSnapshot](../../packages/compat/agent-plugins/README.md)
+Types: [Agent](core.md) · [AgentPluginQualifiedId](../../packages/compat/agent-plugins/README.md) · [AgentPluginSnapshot](../../packages/compat/agent-plugins/README.md)
 
-Source: [`packages/compat/agent-plugins/src/index.ts:89`](../../packages/compat/agent-plugins/src/index.ts)
+Source: [`packages/compat/agent-plugins/src/index.ts:94`](../../packages/compat/agent-plugins/src/index.ts)
 
 <a id="ctxcordisinspect--cordisinspectregistryservice"></a>
 

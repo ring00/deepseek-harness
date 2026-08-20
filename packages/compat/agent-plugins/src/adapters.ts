@@ -9,6 +9,7 @@ import { parse as parseYaml } from 'yaml'
 import type { DiscoveredPlugin } from './discovery.ts'
 import {
   loadAgentPlugin,
+  loadAgentPluginManifest,
   loadAgentSkills,
   serverNamespace,
   type AgentPluginDiagnostic,
@@ -51,6 +52,24 @@ export interface LoadedCompatiblePlugin {
   readonly mcpServers: readonly PortableMcpServer[]
   readonly unsupportedComponents: readonly string[]
   readonly diagnostics: readonly AgentPluginDiagnostic[]
+}
+
+/**
+ * Read compatible manifest identity without loading components or creating data.
+ * @param candidate - discovered plugin root and selected format.
+ * @param report - optional non-fatal manifest diagnostic sink.
+ * @returns validated name and optional version.
+ */
+export async function inspectCompatibleManifest(
+  candidate: DiscoveredPlugin,
+  report?: (diagnostic: AgentPluginDiagnostic) => void,
+): Promise<CompatiblePluginManifest> {
+  if (candidate.format === 'agent-plugins') {
+    const manifest = await loadAgentPluginManifest(candidate.root, report)
+    return { name: manifest.name, ...manifest.version === undefined ? {} : { version: manifest.version } }
+  }
+  const { manifest } = await loadClaudeManifest(candidate.root)
+  return manifest
 }
 
 /** Host inputs for portable loading and setup-time credential resolution. */
@@ -116,10 +135,8 @@ export async function loadCompatiblePlugin(
     options.report?.(diagnostic)
   }
   for (const message of candidate.diagnostics) report('discovery', message)
-  const root = await canonicalDirectory(candidate.root)
-  const raw = record(JSON.parse(await readFile(await containedFile(root, join(root, '.claude-plugin', 'plugin.json')), 'utf8')))
-  const name = string(raw.name, 'plugin name')
-  if (!PLUGIN_NAME.test(name)) throw new Error(`invalid Claude plugin name ${JSON.stringify(name)}`)
+  const { root, raw, manifest } = await loadClaudeManifest(candidate.root)
+  const name = manifest.name
   const skills = await loadAgentSkills(root, locations(raw.skills) ?? ['./skills'], { adapter: 'claude', report })
   const commands = await loadCommands(root, name, locations(raw.commands) ?? ['./commands'], report)
   const mcpServers = await loadMcp(root, dataDir, name, instanceHash, locations(raw.mcp ?? raw.mcpServers)?.[0] ?? './.mcp.json', {
@@ -136,13 +153,25 @@ export async function loadCompatiblePlugin(
     dataDir,
     instanceHash,
     format: 'claude',
-    manifest: { name, ...typeof raw.version === 'string' ? { version: raw.version } : {} },
+    manifest,
     skills,
     commands,
     mcpServers,
     unsupportedComponents,
     diagnostics,
   }
+}
+
+async function loadClaudeManifest(rootPath: string): Promise<{
+  root: string
+  raw: Record<string, unknown>
+  manifest: CompatiblePluginManifest
+}> {
+  const root = await canonicalDirectory(rootPath)
+  const raw = record(JSON.parse(await readFile(await containedFile(root, join(root, '.claude-plugin', 'plugin.json')), 'utf8')))
+  const name = string(raw.name, 'plugin name')
+  if (!PLUGIN_NAME.test(name)) throw new Error(`invalid Claude plugin name ${JSON.stringify(name)}`)
+  return { root, raw, manifest: { name, ...typeof raw.version === 'string' ? { version: raw.version } : {} } }
 }
 
 async function loadCommands(

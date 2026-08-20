@@ -223,6 +223,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   AgentSetup: 'core.md',
   AgentStatus: 'core.md',
   AgentPluginSnapshot: '../../packages/compat/agent-plugins/README.md',
+  AgentPluginQualifiedId: '../../packages/compat/agent-plugins/README.md',
   ContentBlock: 'llm-streaming.md',
   CreateAgentOptions: 'core.md',
   GenerateOptions: 'llm-streaming.md',

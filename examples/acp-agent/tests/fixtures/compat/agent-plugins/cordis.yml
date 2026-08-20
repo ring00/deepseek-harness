@@ -21,6 +21,12 @@
 - id: commands
   name: '@deepseek-ai/dsh-commands'
 
+- id: settings
+  name: '@deepseek-ai/dsh-settings-file'
+  config:
+    path: !!js process.env.DSH_SETTINGS_PATH
+    watch: false
+
 - id: credentials
   name: '@deepseek-ai/dsh-credentials-local'
   config:
@@ -37,7 +43,7 @@
   config:
     discovery:
       defaults:
-        - claude
+        - agents
     dataRoot: !!js process.env.DSH_AGENT_PLUGIN_DATA
     mcp:
       toolCallTimeoutMs: 5000

@@ -130,5 +130,6 @@ seam 正是替换一个提供方就能改变整个产品的原因。文件系统
 | fork 活跃会话 | `ctx.sessions.fork(source, boundary?, childSessionId?)` |
 | 在发布前为每个 agent 异步组装行为 | 注册有序的 `ctx.agents.registerSetup()` 贡献 |
 | 将注册项限定到单个 agent | 使用该 agent 的 `agent.ctx` |
+| 孵化 Agent Plugins 与 Claude 兼容功能 | 显式启用 `dsh-agent-plugins`；它在 setup 期间发现工作区目录，读取 DSH 自有激活设置，并只把已启用 generation 挂载到 `agent.ctx` |
 
 [扩展实操手册](cookbook/extension-cookbook.md)将功能映射到能力，并索引[包](cookbook/adding-a-package.md)、[工具](cookbook/adding-a-tool.md)、[LLM（大语言模型）适配器](cookbook/adding-an-llm-adapter.md)、[Chat 节点](cookbook/adding-a-conversation-node.md)和[设置卡片](cookbook/adding-a-settings-card.md)的分步指南。

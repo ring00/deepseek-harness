@@ -15,6 +15,7 @@ import type { CredentialInfo, CredentialRef, ResolvedCredential } from '@deepsee
 import { CallId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
+import SettingsProvider from '@deepseek-ai/dsh-settings'
 
 const runtimeFixture = fileURLToPath(new URL('./fixtures/runtime/', import.meta.url)).replace(/\/$/u, '')
 const temporaryRoots: string[] = []
@@ -28,18 +29,26 @@ class MemoryCredentials extends CredentialProvider {
   override unset(): Promise<void> { return Promise.reject(new Error('read only')) }
 }
 
+class MemorySettings extends SettingsProvider {
+  override readonly writable: boolean = true
+  protected override load(): Promise<Record<string, unknown>> { return Promise.resolve({}) }
+  protected override persist(): Promise<void> { return Promise.resolve() }
+}
+class ReadOnlySettings extends MemorySettings { override readonly writable = false }
+
 async function temporaryDirectory(label: string): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), `dsh-agent-plugins-${label}-`))
   temporaryRoots.push(path)
   return path
 }
 
-async function mountBase(): Promise<Context> {
+async function mountBase(readOnly = false): Promise<Context> {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(SkillRegistry)
   await ctx.plugin(CommandRuntime)
   await ctx.plugin(MemoryCredentials)
+  await ctx.plugin(readOnly ? ReadOnlySettings : MemorySettings)
   await ctx.plugin(AgentLoop, { agents: [] })
   return ctx
 }
@@ -53,6 +62,10 @@ function config(dataRoot: string): AgentPlugins.Config {
 
 async function createAgent(ctx: Context, cwd: string, id: string) {
   return (await ctx.agents.create({ sessionId: SessionId(id), meta: { cwd } })).agent
+}
+
+async function createUserAgent(ctx: Context, id: string) {
+  return (await ctx.agents.create({ sessionId: SessionId(id) })).agent
 }
 
 async function executeText(ctx: Context, agent: Awaited<ReturnType<typeof createAgent>>, name: string, value: string): Promise<string> {
@@ -108,6 +121,59 @@ describe('per-agent compatibility generations', () => {
     await ctx.fiber.dispose()
   }, 20_000)
 
+  it('persists workspace toggles for new agents without changing the live generation', async () => {
+    const ctx = await mountBase()
+    const firstWorkspace = await temporaryDirectory('first-workspace')
+    const secondWorkspace = await temporaryDirectory('second-workspace')
+    await ctx.plugin(AgentPlugins, config(await temporaryDirectory('data')))
+    const current = await createAgent(ctx, firstWorkspace, 'toggle-current')
+
+    expect((await ctx.skills.list({ scope: current })).map(skill => skill.name)).toEqual(['runtime-skill'])
+    const pending = await ctx.agentPlugin.setEnabled(current, ctx.agentPlugin.list(current).entries[0]!.qualifiedId, false)
+    expect(pending.entries[0]).toMatchObject({ enabled: false, status: 'partial' })
+    expect((await ctx.skills.list({ scope: current })).map(skill => skill.name)).toEqual(['runtime-skill'])
+
+    const disabled = await createAgent(ctx, firstWorkspace, 'toggle-disabled')
+    expect(ctx.agentPlugin.list(disabled).entries[0]).toMatchObject({ enabled: false, status: 'disabled' })
+    expect(ctx.agentPlugin.list(disabled).entries[0]!.skillCount).toBeUndefined()
+    expect(await ctx.skills.list({ scope: disabled })).toEqual([])
+
+    const otherWorkspace = await createAgent(ctx, secondWorkspace, 'toggle-other-workspace')
+    expect(ctx.agentPlugin.list(otherWorkspace).entries[0]).toMatchObject({ enabled: true, status: 'partial' })
+    await ctx.agentPlugin.setEnabled(disabled, ctx.agentPlugin.list(disabled).entries[0]!.qualifiedId, true)
+    expect(ctx.agentPlugin.list(disabled).entries[0]).toMatchObject({ enabled: true, status: 'disabled' })
+    const enabled = await createAgent(ctx, firstWorkspace, 'toggle-enabled')
+    expect(ctx.agentPlugin.list(enabled).entries[0]).toMatchObject({ enabled: true, status: 'partial' })
+    await ctx.fiber.dispose()
+  }, 20_000)
+
+  it('rejects toggle writes from a read-only settings provider', async () => {
+    const ctx = await mountBase(true)
+    await ctx.plugin(AgentPlugins, config(await temporaryDirectory('data')))
+    const agent = await createAgent(ctx, await temporaryDirectory('workspace'), 'read-only')
+    const snapshot = ctx.agentPlugin.list(agent)
+    expect(snapshot.writable).toBe(false)
+    await expect(ctx.agentPlugin.setEnabled(agent, snapshot.entries[0]!.qualifiedId, false)).rejects.toThrow(/read-only/u)
+    await ctx.fiber.dispose()
+  })
+
+  it('shares the user bucket and serializes concurrent toggle writes', async () => {
+    const ctx = await mountBase()
+    await ctx.plugin(AgentPlugins, config(await temporaryDirectory('data')))
+    const current = await createUserAgent(ctx, 'user-current')
+    const id = ctx.agentPlugin.list(current).entries[0]!.qualifiedId
+
+    await Promise.all([
+      ctx.agentPlugin.setEnabled(current, id, false),
+      ctx.agentPlugin.setEnabled(current, id, true),
+    ])
+    expect(ctx.agentPlugin.list(current).entries[0]).toMatchObject({ enabled: true, status: 'partial' })
+    await ctx.agentPlugin.setEnabled(current, id, false)
+    const replacement = await createUserAgent(ctx, 'user-replacement')
+    expect(ctx.agentPlugin.list(replacement).entries[0]).toMatchObject({ enabled: false, status: 'disabled' })
+    await ctx.fiber.dispose()
+  }, 20_000)
+
   it('rejects a second active compatibility row', async () => {
     const ctx = await mountBase()
     await ctx.plugin(AgentPlugins, { discovery: { defaults: [] } })
@@ -118,7 +184,7 @@ describe('per-agent compatibility generations', () => {
 
 describe('adapter exports', () => {
   it('exposes the reduced Loader configuration', () => {
-    expect(AgentPlugins.inject).toEqual(['agents', 'skills', 'tools', 'commands', 'credentials'])
+    expect(AgentPlugins.inject).toEqual(['agents', 'skills', 'tools', 'commands', 'credentials', 'settings'])
     expect(AgentPlugins.Config({ discovery: { defaults: [] } })).toMatchObject({ discovery: { defaults: [] } })
   })
 })

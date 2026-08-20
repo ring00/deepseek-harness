@@ -13,9 +13,10 @@ The package is absent from the DSH CLI dependency set, shipped profiles, and plu
   name: '@deepseek-ai/dsh-agent-plugins'
   config:
     discovery:
-      defaults: [dsh, claude]
+      defaults: [dsh, agents, claude]
       # homes:
       #   dsh: /absolute/dsh-home
+      #   agents: /absolute/agents-home
       #   claude: /absolute/claude-home
       # sources:
       #   - id: team-plugins
@@ -32,9 +33,11 @@ The package is absent from the DSH CLI dependency set, shipped profiles, and plu
 
 One compatibility row may be active. `discovery.defaults: []` disables built-in locations; configured sources still run first in declaration order. A source path is absolute or relative to the agent's project root and describes either one plugin (`layout: plugin`) or immediate plugin children (`layout: children`). `format` may force `agent-plugins` or `claude`; `auto` prefers Agent Plugins when both manifests exist.
 
-The default order is configured sources, project `.dsh/plugins` and `.claude/plugins`, then `$DSH_HOME/plugins` and enabled installations from Claude's installed index and effective user/project settings. The nearest Git ancestor of `session.header.cwd` is the project root; an agent without a cwd receives user sources only. Discovery requires `plugin.json` or `.claude-plugin/plugin.json`, resolves symlinks before containment and deduplication, and never treats an arbitrary `skills/` directory as a plugin.
+The default order is configured sources; project `.dsh/plugins`, `.agents/plugins`, and `.claude/plugins`; then `$DSH_HOME/plugins`, `~/.agents/plugins`, and installations selected from Claude's installed index. Claude's index selects the newest eligible user or matching project installation per plugin, including plugins disabled in Claude; it is not DSH's activation authority and orphan cache versions are not scanned. The nearest Git ancestor of `session.header.cwd` is the project root; an agent without a cwd receives user sources only. Discovery requires `plugin.json` or `.claude-plugin/plugin.json`, resolves symlinks before containment and deduplication, and never treats an arbitrary `skills/` directory as a plugin.
 
 Discovery is an immutable agent-generation snapshot. Agent creation and resume await it through `ctx.agents.registerSetup()` before publication. Existing agents do not gain plugins when the row loads or reloads, and plugin files are not watched; recreate the agent to rescan. Disposing the row stops future setup and removes every generation it owns.
+
+Every discovered plugin defaults to enabled in DSH. The required `agent-plugins` settings section stores a path-free disabled-ID list under a digest of the canonical project root; agents without a cwd share the `user` bucket. `agentPlugin.setEnabled(agent, id, enabled)` changes the desired state for future generations without modifying Claude settings or the live agent. Disabled plugins receive manifest-only identity inspection: DSH does not create their data directory, parse components, resolve credentials or executables, or translate MCP until a later agent generation enables them.
 
 ## Supported components
 
@@ -57,13 +60,13 @@ Agent Plugins use the strict `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` rules. Claude
 
 Stdio commands use a scrubbed parent environment, resolve bare executables before plugin environment overrides, inject reserved variables last, and restrict explicit working directories to the plugin root or data directory. Streamable HTTP requires an absolute HTTP(S) URL, HTTPS outside loopback, no URL credentials or fragment, and valid case-insensitively unique headers. The official client strips configured headers on cross-origin redirects.
 
-Enabling the row is the trust decision. Skills and commands influence model instructions, and stdio MCP servers execute trusted host code outside the model tool sandbox.
+Keeping a discovered plugin enabled is the trust decision. Skills and commands influence model instructions, and stdio MCP servers execute trusted host code outside the model tool sandbox.
 
 ## Inventory and evidence
 
-`agentPlugin.list(agent)` returns only mounted or attempted enabled candidates with actual manifest name, version, source, selected format, `loaded`/`partial`/`failed` status, component counts, and at most one sanitized error summary. It does not report MCP connection health. The private [`@deepseek-ai/dsh-client-ui-agent-plugins`](../../client/ui-agent-plugins/README.md) companion renders this snapshot as a flat conversation view; Refresh refetches the snapshot and never rescans disk.
+`agentPlugin.list(agent)` returns the selected workspace's complete discovered catalog with actual manifest name, version, source, selected format, desired `enabled` state, and the live generation's `loaded`/`partial`/`failed`/`disabled` status. Loaded entries include component counts and at most one sanitized error summary; disabled entries omit counts. The snapshot says whether the settings provider is writable and does not report MCP connection health. `agentPlugin.setEnabled(agent, id, enabled)` verifies catalog membership, serializes the settings write, and returns a refreshed snapshot. A desired state that differs from the live status is pending agent recreation. The private [`@deepseek-ai/dsh-client-ui-agent-plugins`](../../client/ui-agent-plugins/README.md) companion renders this snapshot as a flat conversation view; Refresh refetches the snapshot and never rescans disk.
 
-The dependency-light exports `./portable`, `./discovery`, and `./adapters` support conformance tests without mounting Cordis. Offline fixtures cover validation, source order, Claude enabled-version selection, path containment, commands, credentials, transports, isolation, and teardown. The assembled keyless snapshot discovers a project Claude plugin and exercises one skill, command, and deterministic local stdio MCP tool. `DSH_AGENT_PLUGINS_CORPUS=1` fetches pinned Agent Plugins examples plus Anthropic's `frontend-design` and `commit-commands` into temporary directories and validates translation without executing their commands or contacting remote services.
+The dependency-light exports `./portable`, `./discovery`, and `./adapters` support conformance tests without mounting Cordis. Offline fixtures cover validation, source order, Claude version selection, `.agents` discovery, path containment, settings isolation, commands, credentials, transports, component isolation, and teardown. The assembled keyless snapshot discovers a project `.agents/plugins` Claude plugin and exercises one skill, command, and deterministic local stdio MCP tool. `DSH_AGENT_PLUGINS_CORPUS=1` fetches pinned Agent Plugins examples plus Anthropic's `frontend-design` and `commit-commands` into temporary directories and validates translation without executing their commands or contacting remote services.
 
 ## Model Experience
 
@@ -83,7 +86,7 @@ Stable for the lifetime of one agent generation while its accepted skill set, co
 
 ## Known Limitations and Deferred Work
 
-- Codex, OpenCode, `.agents`, manifestless marketplace bundles, disabled/stale inventory, and Claude marketplace installation are not supported.
+- Codex, OpenCode, manifestless marketplace bundles, stale Claude installation records, and Claude marketplace installation are not supported.
 - Claude agents, hooks, LSP servers, output styles, dynamic command execution, file injection, and legacy SSE are not executed.
-- Credential changes, configuration reloads, and plugin-directory edits do not alter an existing agent.
+- Toggle, credential, configuration, and plugin-directory changes do not alter an existing agent.
 - There is no downloader, updater, filesystem watcher, MCP health UI, live-agent HMR attachment, or standalone distribution. Extraction and publication require a separate authorized change.

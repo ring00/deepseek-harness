@@ -132,6 +132,21 @@ export class AgentPluginLoadError extends Error {
 }
 
 /**
+ * Validate one Agent Plugins manifest without loading components or creating data.
+ * @param configuredRoot - absolute plugin directory.
+ * @param report - optional non-fatal manifest diagnostic sink.
+ * @returns the validated manifest.
+ */
+export async function loadAgentPluginManifest(
+  configuredRoot: string,
+  report?: (diagnostic: AgentPluginDiagnostic) => void,
+): Promise<AgentPluginManifest> {
+  if (!isAbsolute(configuredRoot)) throw new AgentPluginLoadError('agent plugin root must be an absolute path')
+  const root = await canonicalDirectory(configuredRoot, 'agent plugin root')
+  return loadManifest(root, (await loadValidators()).manifest, (subject, message) => report?.({ subject, message }))
+}
+
+/**
  * Load and translate one Agent Plugins 1.0 directory without starting MCP servers.
  * @param configuredRoot - required absolute path to the plugin directory.
  * @param options - host-owned persistence, executable search, and diagnostics.

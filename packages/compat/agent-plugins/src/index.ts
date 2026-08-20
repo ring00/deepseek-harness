@@ -1,5 +1,6 @@
 /** Per-agent Agent Plugins and Claude Code compatibility service. */
 
+import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Context, Fiber } from '@deepseek-ai/cordis'
@@ -11,11 +12,12 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import type { ReconnectConfig } from '@deepseek-ai/dsh-mcp-client'
 import { BUNDLED_SKILL_RANK, type SkillCandidate, type SkillDefinition, type SkillProvider } from '@deepseek-ai/dsh-skill'
+import { settingsNamespace, type SettingsScope } from '@deepseek-ai/dsh-settings'
 import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import z from '@deepseek-ai/schemastery'
 import type Schema from '@deepseek-ai/schemastery'
-import { expandClaudeCommand, loadCompatiblePlugin, type LoadedCompatiblePlugin } from './adapters.ts'
+import { expandClaudeCommand, inspectCompatibleManifest, loadCompatiblePlugin, type LoadedCompatiblePlugin } from './adapters.ts'
 import { discoverPlugins, type BuiltinSource, type DiscoverySource } from './discovery.ts'
 import type { PortableMcpServer, PortableSkill } from './portable.ts'
 import type { AgentPluginEntry, AgentPluginQualifiedId, AgentPluginSnapshot } from './types.ts'
@@ -29,9 +31,9 @@ export type * from './types.ts'
 export interface Config {
   /** Installation families and custom locations scanned once for each new or resumed agent. */
   discovery?: {
-    /** Built-in source families; defaults to DSH and Claude, while an empty list disables both. */
+    /** Built-in source families; defaults to DSH, Agents, and Claude, while an empty list disables all. */
     defaults?: BuiltinSource[]
-    /** Absolute home-directory overrides for built-in DSH or Claude sources. */
+    /** Absolute home-directory overrides for built-in DSH, Agents, or Claude sources. */
     homes?: Partial<Record<BuiltinSource, string>>
     /** Highest-priority plugin roots or immediate-child containers, evaluated in declaration order. */
     sources?: DiscoverySource[]
@@ -61,8 +63,8 @@ const Reconnect: Schema<ReconnectConfig> = z.object({
 /** Loader configuration schema. */
 export const Config: Schema<Config> = z.object({
   discovery: z.object({
-    defaults: z.array(z.union(['dsh', 'claude'] as const)),
-    homes: z.object({ dsh: z.string(), claude: z.string() }),
+    defaults: z.array(z.union(['dsh', 'agents', 'claude'] as const)),
+    homes: z.object({ dsh: z.string(), agents: z.string(), claude: z.string() }),
     sources: z.array(Source),
   }),
   dataRoot: z.string(),
@@ -70,7 +72,7 @@ export const Config: Schema<Config> = z.object({
 })
 
 export const name = 'agent-plugins'
-export const inject = ['agents', 'skills', 'tools', 'commands', 'credentials']
+export const inject = ['agents', 'skills', 'tools', 'commands', 'credentials', 'settings']
 
 /** Durable source for a queued legacy Claude command prompt. */
 export interface AgentPluginCommandMessageSource {
@@ -83,33 +85,89 @@ declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap { 'agent-plugin-command': AgentPluginCommandMessageSource }
 }
 
-const EMPTY: AgentPluginSnapshot = Object.freeze({ entries: Object.freeze([]) })
+interface AgentPluginSettings { disabled: Record<string, string[]> }
+interface InventoryGeneration { workspaceKey: string; snapshot: AgentPluginSnapshot }
+const SettingsSchema: Schema<AgentPluginSettings> = z.object({ disabled: z.dict(z.array(z.string())).default({}) })
+const EMPTY: AgentPluginSnapshot = Object.freeze({ writable: false, entries: Object.freeze([]) })
 
-/** Immutable compatibility inventory for each live agent generation. */
+/** Workspace plugin catalog with desired state over each immutable live generation. */
 export class AgentPluginInventory extends TypertRemoteService {
-  private readonly generations = new Map<Agent, AgentPluginSnapshot>()
-  constructor(ctx: Context) { super(ctx, 'agentPlugin') }
+  private readonly generations = new Map<Agent, InventoryGeneration>()
+  private readonly settings: SettingsScope<AgentPluginSettings>
+  private writes = Promise.resolve()
+  private acceptingWrites = true
+  constructor(ctx: Context, settings: SettingsScope<AgentPluginSettings>) {
+    super(ctx, 'agentPlugin')
+    this.settings = settings
+    ctx.effect(() => async () => { this.acceptingWrites = false; await this.writes }, 'agent-plugins.settings-writes')
+  }
   /**
    * Publish one generation immediately before its agent becomes visible.
    * @param agent - exact agent that owns the generation.
+   * @param workspaceKey - path-free settings bucket for the generation.
    * @param snapshot - immutable inventory to publish.
    */
-  set(agent: Agent, snapshot: AgentPluginSnapshot): void { this.generations.set(agent, snapshot) }
+  set(agent: Agent, workspaceKey: string, snapshot: AgentPluginSnapshot): void {
+    this.generations.set(agent, { workspaceKey, snapshot })
+  }
   /**
    * Remove one exact generation during row or agent teardown.
    * @param agent - exact agent that owned the generation.
    * @param snapshot - exact snapshot being disposed.
    */
   remove(agent: Agent, snapshot: AgentPluginSnapshot): void {
-    if (this.generations.get(agent) === snapshot) this.generations.delete(agent)
+    if (this.generations.get(agent)?.snapshot === snapshot) this.generations.delete(agent)
   }
   /**
-   * Read the selected live agent's current generation.
+   * Read the selected live agent's catalog and current desired states.
    * @param agent - selected live agent.
    * @returns its inventory or an empty snapshot.
    */
   @Remote('list')
-  list(agent: Agent): AgentPluginSnapshot { return this.generations.get(agent) ?? EMPTY }
+  list(agent: Agent): AgentPluginSnapshot {
+    const generation = this.generations.get(agent)
+    if (generation === undefined) return EMPTY
+    const disabled = new Set(this.settings.get().disabled[generation.workspaceKey] ?? [])
+    return Object.freeze({
+      writable: this.ctx.settings.writable,
+      entries: Object.freeze(generation.snapshot.entries.map(entry => Object.freeze({
+        ...entry, enabled: !disabled.has(entry.qualifiedId),
+      }))),
+    })
+  }
+
+  /**
+   * Persist one workspace activation choice without changing the live generation.
+   * @param agent - selected live agent whose catalog authorizes the plugin id.
+   * @param qualifiedId - discovered plugin identity.
+   * @param enabled - desired state for future agent generations.
+   * @returns the current generation with its updated desired states.
+   */
+  @Remote('setEnabled')
+  async setEnabled(agent: Agent, qualifiedId: AgentPluginQualifiedId, enabled: boolean): Promise<AgentPluginSnapshot> {
+    if (!this.acceptingWrites) throw new Error('agent plugin inventory is stopping')
+    if (!this.ctx.settings.writable) throw new Error('agent plugin settings are read-only')
+    const operation = this.writes.then(async () => {
+      const generation = this.generations.get(agent)
+      if (generation === undefined || !generation.snapshot.entries.some(entry => entry.qualifiedId === qualifiedId)) {
+        throw new Error('agent plugin is not part of the selected workspace catalog')
+      }
+      const current = this.settings.get().disabled
+      const disabled = Object.fromEntries(Object.entries(current).map(([key, ids]) => [key, [...new Set(ids)]]))
+      const ids = new Set(disabled[generation.workspaceKey] ?? [])
+      if (enabled) ids.delete(qualifiedId); else ids.add(qualifiedId)
+      if (ids.size === 0) {
+        const { [generation.workspaceKey]: _removed, ...remaining } = disabled
+        await this.settings.replace({ disabled: remaining })
+      } else {
+        disabled[generation.workspaceKey] = [...ids].sort()
+        await this.settings.replace({ disabled })
+      }
+    })
+    this.writes = operation.then(() => {}, () => {})
+    await operation
+    return this.list(agent)
+  }
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -126,29 +184,30 @@ export function apply(ctx: Context, config: Config): void {
     activeRows.set(ctx.root, row)
     return () => { if (activeRows.get(ctx.root) === row) activeRows.delete(ctx.root) }
   }, 'agent-plugins.row')
-  const inventory = new AgentPluginInventory(ctx)
+  const settings = ctx.settings.register(settingsNamespace('agent-plugins'), SettingsSchema, { applies: 'restart' })
+  const inventory = new AgentPluginInventory(ctx, settings)
   const dataRoot = config.dataRoot ?? join(resolveDshHome(), 'agent-plugins', 'data')
   const generations = new Map<Agent, Fiber>()
   const unregister = ctx.agents.registerSetup(async (agentCtx, signal) => {
     const agent = agentCtx.agent
     if (agent === undefined) throw new Error('agent-plugins setup context has no agent')
-    let snapshot: AgentPluginSnapshot | undefined
+    let generation: InventoryGeneration | undefined
     const fiber = agentCtx.plugin({
       name: 'agent-plugin-generation', inject,
       async apply(generationCtx: Context): Promise<void> {
         generationCtx.effect(() => () => { generations.delete(agent) }, 'agent-plugins.generation')
-        snapshot = await loadGeneration(generationCtx, agent, config, dataRoot)
-        const owned = snapshot
-        generationCtx.effect(() => () => { inventory.remove(agent, owned) }, 'agent-plugins.inventory')
+        generation = await loadGeneration(generationCtx, agent, config, dataRoot, settings)
+        const owned = generation
+        generationCtx.effect(() => () => { inventory.remove(agent, owned.snapshot) }, 'agent-plugins.inventory')
       },
     })
     generations.set(agent, fiber)
     try {
       await fiber
       if (signal.aborted) throw signal.reason
-      if (snapshot === undefined) throw new Error('agent-plugin generation produced no inventory')
-      const prepared = snapshot
-      return { commit: () => { if (signal.aborted) throw signal.reason; inventory.set(agent, prepared) } }
+      if (generation === undefined) throw new Error('agent-plugin generation produced no inventory')
+      const prepared = generation
+      return { commit: () => { if (signal.aborted) throw signal.reason; inventory.set(agent, prepared.workspaceKey, prepared.snapshot) } }
     } catch (error) {
       generations.delete(agent)
       await fiber.dispose().catch(() => {})
@@ -162,7 +221,13 @@ export function apply(ctx: Context, config: Config): void {
   }, 'agent-plugins.generations')
 }
 
-async function loadGeneration(ctx: Context, agent: Agent, config: Config, dataRoot: string): Promise<AgentPluginSnapshot> {
+async function loadGeneration(
+  ctx: Context,
+  agent: Agent,
+  config: Config,
+  dataRoot: string,
+  settings: SettingsScope<AgentPluginSettings>,
+): Promise<InventoryGeneration> {
   const parentEnv = scrubbedParentEnv()
   let discovery
   try {
@@ -183,7 +248,29 @@ async function loadGeneration(ctx: Context, agent: Agent, config: Config, dataRo
     ctx.logger.warn(`agent-plugins(${agent.id}) ${diagnostic.source}: ${diagnostic.message}`)
   }
   const entries: AgentPluginEntry[] = []
+  const workspaceKey = discovery.projectRoot === undefined
+    ? 'user'
+    : createHash('sha256').update(discovery.projectRoot).digest('hex').slice(0, 12)
+  const disabled = new Set(settings.get().disabled[workspaceKey] ?? [])
   for (const candidate of discovery.plugins) {
+    const qualifiedId = candidate.qualifiedId as AgentPluginQualifiedId
+    if (disabled.has(candidate.qualifiedId)) {
+      try {
+        const manifest = await inspectCompatibleManifest(candidate)
+        entries.push(Object.freeze({
+          qualifiedId, name: manifest.name,
+          ...manifest.version === undefined ? {} : { version: manifest.version },
+          format: candidate.format, source: candidate.sourceLabel, enabled: false, status: 'disabled',
+        }))
+      } catch (error) {
+        entries.push(Object.freeze({
+          qualifiedId, name: candidate.qualifiedId.slice(candidate.qualifiedId.lastIndexOf(':') + 1),
+          format: candidate.format, source: candidate.sourceLabel, enabled: false, status: 'disabled',
+          error: sanitize(safeError(error), [candidate.root, dataRoot]),
+        }))
+      }
+      continue
+    }
     let loaded: LoadedCompatiblePlugin
     try {
       loaded = await loadCompatiblePlugin(candidate, {
@@ -198,10 +285,10 @@ async function loadGeneration(ctx: Context, agent: Agent, config: Config, dataRo
       })
     } catch (error) {
       entries.push(Object.freeze({
-        qualifiedId: candidate.qualifiedId as AgentPluginQualifiedId,
+        qualifiedId,
         name: candidate.qualifiedId.slice(candidate.qualifiedId.lastIndexOf(':') + 1),
         format: candidate.format, source: candidate.sourceLabel,
-        status: 'failed', skillCount: 0, commandCount: 0, mcpServerCount: 0,
+        enabled: true, status: 'failed', skillCount: 0, commandCount: 0, mcpServerCount: 0,
         error: sanitize(safeError(error), [candidate.root, dataRoot]),
       }))
       continue
@@ -219,19 +306,19 @@ async function loadGeneration(ctx: Context, agent: Agent, config: Config, dataRo
         || loaded.unsupportedComponents.length > 0
         || loaded.commands.some(command => command.partial)
       entries.push(entry(
-        candidate.qualifiedId as AgentPluginQualifiedId,
+        qualifiedId,
         candidate.sourceLabel,
         loaded,
         partial ? 'partial' : 'loaded',
       ))
     } catch (error) {
       entries.push({
-        ...entry(candidate.qualifiedId as AgentPluginQualifiedId, candidate.sourceLabel, loaded, 'failed'),
+        ...entry(qualifiedId, candidate.sourceLabel, loaded, 'failed'),
         error: sanitize(safeError(error), [loaded.root, loaded.dataDir]),
       })
     }
   }
-  return Object.freeze({ entries: Object.freeze(entries) })
+  return Object.freeze({ workspaceKey, snapshot: Object.freeze({ writable: ctx.settings.writable, entries: Object.freeze(entries) }) })
 }
 
 function entry(id: AgentPluginQualifiedId, source: string, plugin: LoadedCompatiblePlugin, status: AgentPluginEntry['status']): AgentPluginEntry {
@@ -239,7 +326,7 @@ function entry(id: AgentPluginQualifiedId, source: string, plugin: LoadedCompati
   return Object.freeze({
     qualifiedId: id, name: plugin.manifest.name,
     ...plugin.manifest.version === undefined ? {} : { version: plugin.manifest.version },
-    format: plugin.format, source, status,
+    format: plugin.format, source, enabled: true, status,
     skillCount: plugin.skills.length, commandCount: plugin.commands.length, mcpServerCount: plugin.mcpServers.length,
     ...diagnostic === undefined ? {} : { error: sanitize(`${diagnostic.subject}: ${diagnostic.message}`, [plugin.root, plugin.dataDir]) },
   })

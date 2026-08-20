@@ -126,13 +126,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'agentPlugin',
-    summary: 'Immutable compatibility inventory for each live agent generation.',
-    description: 'Immutable compatibility inventory for each live agent generation.',
+    summary: 'Workspace plugin catalog with desired state over each immutable live generation.',
+    description: 'Workspace plugin catalog with desired state over each immutable live generation.',
     methods: [
       {
-        signature: 'set(agent: Agent, snapshot: AgentPluginSnapshot): void',
+        signature: 'set(agent: Agent, workspaceKey: string, snapshot: AgentPluginSnapshot): void',
         description: 'Publish one generation immediately before its agent becomes visible.',
-        parameters: [{ name: 'agent', description: 'exact agent that owns the generation.' }, { name: 'snapshot', description: 'immutable inventory to publish.' }],
+        parameters: [{ name: 'agent', description: 'exact agent that owns the generation.' }, { name: 'workspaceKey', description: 'path-free settings bucket for the generation.' }, { name: 'snapshot', description: 'immutable inventory to publish.' }],
       },
       {
         signature: 'remove(agent: Agent, snapshot: AgentPluginSnapshot): void',
@@ -141,9 +141,15 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'list\') list(agent: Agent): AgentPluginSnapshot',
-        description: 'Read the selected live agent\'s current generation.',
+        description: 'Read the selected live agent\'s catalog and current desired states.',
         parameters: [{ name: 'agent', description: 'selected live agent.' }],
         returns: 'its inventory or an empty snapshot.',
+      },
+      {
+        signature: '@Remote(\'setEnabled\') async setEnabled(agent: Agent, qualifiedId: AgentPluginQualifiedId, enabled: boolean): Promise<AgentPluginSnapshot>',
+        description: 'Persist one workspace activation choice without changing the live generation.',
+        parameters: [{ name: 'agent', description: 'selected live agent whose catalog authorizes the plugin id.' }, { name: 'qualifiedId', description: 'discovered plugin identity.' }, { name: 'enabled', description: 'desired state for future agent generations.' }],
+        returns: 'the current generation with its updated desired states.',
       },
     ],
   },
@@ -2664,7 +2670,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AgentPluginEntry',
-    declaration: 'export interface AgentPluginEntry {\n    readonly qualifiedId: AgentPluginQualifiedId;\n    readonly name: string;\n    readonly version?: string;\n    readonly format: AgentPluginFormat;\n    readonly source: string;\n    readonly status: AgentPluginStatus;\n    readonly skillCount: number;\n    readonly commandCount: number;\n    readonly mcpServerCount: number;\n    readonly error?: string;\n}',
+    declaration: 'export interface AgentPluginEntry {\n    readonly qualifiedId: AgentPluginQualifiedId;\n    readonly name: string;\n    readonly version?: string;\n    readonly format: AgentPluginFormat;\n    readonly source: string;\n    readonly enabled: boolean;\n    readonly status: AgentPluginStatus;\n    readonly skillCount?: number;\n    readonly commandCount?: number;\n    readonly mcpServerCount?: number;\n    readonly error?: string;\n}',
   },
   {
     name: 'AgentPluginFormat',
@@ -2676,11 +2682,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AgentPluginSnapshot',
-    declaration: 'export interface AgentPluginSnapshot {\n    readonly entries: readonly AgentPluginEntry[];\n}',
+    declaration: 'export interface AgentPluginSnapshot {\n    readonly writable: boolean;\n    readonly entries: readonly AgentPluginEntry[];\n}',
   },
   {
     name: 'AgentPluginStatus',
-    declaration: 'export type AgentPluginStatus = \'loaded\' | \'partial\' | \'failed\';',
+    declaration: 'export type AgentPluginStatus = \'loaded\' | \'partial\' | \'failed\' | \'disabled\';',
   },
   {
     name: 'AgentPreset',

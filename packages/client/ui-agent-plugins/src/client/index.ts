@@ -28,6 +28,11 @@ export async function apply(ctx: ClientContext): Promise<void> {
           if (!result.ok) throw new Error(`agentPlugin.list failed: ${result.error.code}`)
           return result.value
         },
+        setEnabled: async (qualifiedId, enabled) => {
+          const result = await remoteCtx.remote.agentPlugin.setEnabled(sessionId, qualifiedId, enabled)
+          if (!result.ok) throw new Error(`agentPlugin.setEnabled failed: ${result.error.code}`)
+          return result.value
+        },
       }),
     }, AgentPluginsView))
   })

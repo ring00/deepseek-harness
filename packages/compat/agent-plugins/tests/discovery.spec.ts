@@ -26,24 +26,31 @@ describe('reduced plugin discovery', () => {
     const project = await temporary('project')
     const cwd = join(project, 'nested')
     const dshHome = await temporary('dsh-home')
+    const agentsHome = await temporary('agents-home')
     const configured = await temporary('configured')
     await mkdir(join(project, '.git'))
     await mkdir(cwd)
     await manifest(configured, 'agent-plugins', 'configured')
     await mkdir(join(project, '.dsh', 'plugins'), { recursive: true })
     await symlink(configured, join(project, '.dsh', 'plugins', 'duplicate'))
+    await manifest(join(project, '.agents', 'plugins', 'project-agents'), 'agent-plugins', 'project-agents')
     await manifest(join(project, '.claude', 'plugins', 'project-claude'), 'claude', 'project-claude')
     await manifest(join(dshHome, 'plugins', 'user-dsh'), 'agent-plugins', 'user-dsh')
+    await manifest(join(agentsHome, 'plugins', 'user-agents'), 'claude', 'user-agents')
 
     const discovered = await discoverPlugins({
       cwd, dshHome,
-      discovery: { sources: [{ id: 'configured', path: configured, base: 'absolute', layout: 'plugin' }] },
+      discovery: { homes: { agents: agentsHome }, sources: [{ id: 'configured', path: configured, base: 'absolute', layout: 'plugin' }] },
       claudeHome: await temporary('empty-claude'),
     })
 
     expect(await findProjectRoot(cwd)).toBe(await realpath(project))
-    expect(discovered.plugins.map(plugin => plugin.sourceId)).toEqual(['configured:configured', 'project:claude', 'user:dsh'])
-    expect(discovered.plugins.map(plugin => plugin.format)).toEqual(['agent-plugins', 'claude', 'agent-plugins'])
+    expect(discovered.plugins.map(plugin => plugin.sourceId)).toEqual([
+      'configured:configured', 'project:agents', 'project:claude', 'user:dsh', 'user:agents',
+    ])
+    expect(discovered.plugins.map(plugin => plugin.format)).toEqual([
+      'agent-plugins', 'agent-plugins', 'claude', 'agent-plugins', 'claude',
+    ])
   })
 
   it('prefers Agent Plugins when both manifests exist and honors a forced format', async () => {
@@ -61,15 +68,17 @@ describe('reduced plugin discovery', () => {
     expect(forced.plugins[0]).toMatchObject({ format: 'claude', diagnostics: ['ignored additional manifests: agent-plugins'] })
   })
 
-  it('selects only the newest eligible enabled Claude installation', async () => {
+  it('selects the newest eligible installation for every indexed Claude plugin', async () => {
     const project = await temporary('claude-project')
     const home = await temporary('claude-home')
     const dshHome = await temporary('dsh-home')
     const old = join(home, 'cache', 'plugin', '1')
     const latest = join(home, 'cache', 'plugin', '2')
+    const orphan = join(home, 'cache', 'plugin', 'orphan')
     await mkdir(join(project, '.git'))
     await manifest(old, 'claude', 'old')
     await manifest(latest, 'claude', 'latest')
+    await manifest(orphan, 'claude', 'orphan')
     await mkdir(join(home, 'plugins'), { recursive: true })
     await writeFile(join(home, 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: {
       'frontend-design@official': [
@@ -83,10 +92,12 @@ describe('reduced plugin discovery', () => {
     } }))
 
     const discovered = await discoverPlugins({ cwd: project, dshHome, claudeHome: home, discovery: { defaults: ['claude'] } })
-    expect(discovered.plugins).toHaveLength(1)
+    expect(discovered.plugins).toHaveLength(2)
     expect(discovered.plugins[0]).toMatchObject({
       qualifiedId: 'claude:frontend-design@official', root: await realpath(latest), sourceLabel: 'Claude project', format: 'claude',
     })
+    expect(discovered.plugins[1]).toMatchObject({ qualifiedId: 'claude:disabled@official', root: await realpath(old) })
+    expect(discovered.plugins.some(plugin => plugin.root === orphan)).toBe(false)
   })
 
   it('contains escaping symlinks and malformed siblings without blocking valid plugins', async () => {

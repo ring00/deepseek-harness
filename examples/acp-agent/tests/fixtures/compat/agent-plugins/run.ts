@@ -17,7 +17,7 @@ if (configPath === undefined || fixtureRoot === undefined || projectRoot === und
   throw new Error('agent-plugins snapshot requires config and fixture paths')
 }
 
-const pluginRoot = join(projectRoot, '.claude', 'plugins', 'snapshot-claude')
+const pluginRoot = join(projectRoot, '.agents', 'plugins', 'snapshot-claude')
 await mkdir(pluginRoot, { recursive: true })
 await cp(fixtureRoot, pluginRoot, { recursive: true })
 

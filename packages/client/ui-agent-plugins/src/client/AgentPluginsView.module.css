@@ -7,5 +7,9 @@
 .summary strong { margin-right: auto; }
 .summary span { border-radius: 999px; padding: 2px 8px; background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-secondary); font-size: 12px; }
 .view p { margin: 8px 0 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; }
+.notice { line-height: 1.45; }
+.toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+.toggle span { padding: 0; background: none; }
+.pending { color: var(--dsw-alias-label-secondary) !important; }
 .state { padding: 24px; color: var(--dsw-alias-label-tertiary); }
 .error { overflow-wrap: anywhere; }

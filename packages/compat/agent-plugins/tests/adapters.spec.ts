@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { expandClaudeCommand, loadCompatiblePlugin } from '@deepseek-ai/dsh-agent-plugins/adapters'
+import { expandClaudeCommand, inspectCompatibleManifest, loadCompatiblePlugin } from '@deepseek-ai/dsh-agent-plugins/adapters'
 import type { DiscoveredPlugin } from '@deepseek-ai/dsh-agent-plugins/discovery'
 
 const roots: string[] = []
@@ -47,6 +47,14 @@ async function fixture(): Promise<{ root: string; candidate: DiscoveredPlugin }>
 }
 
 describe('Claude adapter', () => {
+  it('inspects disabled plugins without parsing their components', async () => {
+    const { root, candidate } = await fixture()
+    await writeFile(join(root, '.mcp.json'), '{ invalid')
+    await writeFile(join(root, 'skills', 'review', 'SKILL.md'), 'invalid skill')
+
+    await expect(inspectCompatibleManifest(candidate)).resolves.toEqual({ name: 'plugin-dev', version: '1.2.3' })
+  })
+
   it('loads skills, namespaced commands, setup-time credentials, and isolated MCP entries', async () => {
     const { candidate } = await fixture()
     const dataRoot = await temporary('data')

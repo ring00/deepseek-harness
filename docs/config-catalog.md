@@ -168,16 +168,16 @@ Source: [`packages/core/agent-loop/src/index.ts:254`](../packages/core/agent-loo
 
 ## `@deepseek-ai/dsh-agent-plugins`
 
-Requires: `agents` · `skills` · `tools` · `commands` · `credentials`
+Requires: `agents` · `skills` · `tools` · `commands` · `credentials` · `settings`
 
 ```ts config-catalog
 /** Agent Plugins discovery and MCP policy. */
 export interface Config {
   /** Installation families and custom locations scanned once for each new or resumed agent. */
   discovery?: {
-    /** Built-in source families; defaults to DSH and Claude, while an empty list disables both. */
+    /** Built-in source families; defaults to DSH, Agents, and Claude, while an empty list disables all. */
     defaults?: BuiltinSource[]
-    /** Absolute home-directory overrides for built-in DSH or Claude sources. */
+    /** Absolute home-directory overrides for built-in DSH, Agents, or Claude sources. */
     homes?: Partial<Record<BuiltinSource, string>>
     /** Highest-priority plugin roots or immediate-child containers, evaluated in declaration order. */
     sources?: DiscoverySource[]
@@ -194,7 +194,7 @@ export interface Config {
 }
 
 /** Built-in installation families understood by the MVP. */
-export type BuiltinSource = 'dsh' | 'claude'
+export type BuiltinSource = 'dsh' | 'agents' | 'claude'
 
 /** One configured plugin root or immediate-child container. */
 export interface DiscoverySource {
@@ -216,7 +216,7 @@ export type PluginFormat = 'auto' | 'agent-plugins' | 'claude'
 
 Depends on: [`ReconnectConfig`](../packages/mcp/mcp-client/src/index.ts)
 
-Source: [`packages/compat/agent-plugins/src/index.ts:29`](../packages/compat/agent-plugins/src/index.ts)
+Source: [`packages/compat/agent-plugins/src/index.ts:31`](../packages/compat/agent-plugins/src/index.ts)
 
 <a id="deepseek-aidsh-agent-presets"></a>
 

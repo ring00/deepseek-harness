@@ -1,11 +1,11 @@
-/** Per-workspace discovery for Agent Plugins and enabled Claude installations. */
+/** Per-workspace discovery for Agent Plugins and Claude installations. */
 
 import { readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 /** Built-in installation families understood by the MVP. */
-export type BuiltinSource = 'dsh' | 'claude'
+export type BuiltinSource = 'dsh' | 'agents' | 'claude'
 /** Manifest dialect selected for one plugin root. */
 export type PluginFormat = 'auto' | 'agent-plugins' | 'claude'
 
@@ -30,7 +30,7 @@ export interface DiscoveryConfig {
   readonly sources?: readonly DiscoverySource[]
 }
 
-/** One selected enabled installation before component parsing. */
+/** One selected installation before component parsing. */
 export interface DiscoveredPlugin {
   readonly qualifiedId: string
   readonly dataIdentity: string
@@ -65,7 +65,7 @@ interface Candidate {
   readonly format: PluginFormat
 }
 
-const DEFAULTS: readonly BuiltinSource[] = ['dsh', 'claude']
+const DEFAULTS: readonly BuiltinSource[] = ['dsh', 'agents', 'claude']
 const MANIFESTS = {
   'agent-plugins': 'plugin.json',
   claude: join('.claude-plugin', 'plugin.json'),
@@ -115,12 +115,18 @@ export async function discoverPlugins(options: DiscoverPluginsOptions): Promise<
     if (defaults.includes('dsh')) await collectDirectory(candidates, join(projectRoot, '.dsh', 'plugins'), 'children', {
       id: 'project:dsh', label: 'Project DSH', format: 'auto', report,
     })
+    if (defaults.includes('agents')) await collectDirectory(candidates, join(projectRoot, '.agents', 'plugins'), 'children', {
+      id: 'project:agents', label: 'Project Agents', format: 'auto', report,
+    })
     if (defaults.includes('claude')) await collectDirectory(candidates, join(projectRoot, '.claude', 'plugins'), 'children', {
       id: 'project:claude', label: 'Project Claude', format: 'auto', report,
     })
   }
   if (defaults.includes('dsh')) await collectDirectory(candidates, join(config.homes?.dsh ?? options.dshHome, 'plugins'), 'children', {
     id: 'user:dsh', label: 'User DSH', format: 'auto', report,
+  })
+  if (defaults.includes('agents')) await collectDirectory(candidates, join(config.homes?.agents ?? join(options.userHome ?? homedir(), '.agents'), 'plugins'), 'children', {
+    id: 'user:agents', label: 'User Agents', format: 'auto', report,
   })
   if (defaults.includes('claude')) {
     const claudeHome = config.homes?.claude ?? options.claudeHome ?? join(options.userHome ?? homedir(), '.claude')
@@ -206,9 +212,8 @@ async function collectClaude(
     report(source, 'installed plugin index is malformed')
     return
   }
-  const enabled = await claudeEnabled(claudeHome, projectRoot, report)
   for (const [id, rawRecords] of Object.entries(installed.plugins)) {
-    if (!enabled.get(id) || !Array.isArray(rawRecords)) continue
+    if (!Array.isArray(rawRecords)) continue
     const eligible: Record<string, unknown>[] = []
     for (const value of rawRecords) {
       if (!record(value)) continue
@@ -221,7 +226,7 @@ async function collectClaude(
     }
     const selected = eligible.toSorted((left, right) => timestamp(left).localeCompare(timestamp(right))).at(-1)
     if (selected === undefined || typeof selected.installPath !== 'string') {
-      report(source, `enabled installation ${JSON.stringify(id)} has no eligible path`)
+      report(source, `installation ${JSON.stringify(id)} has no eligible path`)
       continue
     }
     output.push({
@@ -232,22 +237,6 @@ async function collectClaude(
       format: 'claude',
     })
   }
-}
-
-async function claudeEnabled(
-  home: string,
-  projectRoot: string | undefined,
-  report: (source: string, message: string) => void,
-): Promise<Map<string, boolean>> {
-  const result = new Map<string, boolean>()
-  const paths = [join(home, 'settings.json')]
-  if (projectRoot !== undefined) paths.push(join(projectRoot, '.claude', 'settings.json'), join(projectRoot, '.claude', 'settings.local.json'))
-  for (const path of paths) {
-    const parsed = await optionalJson(path, 'user:claude', report)
-    if (!record(parsed) || !record(parsed.enabledPlugins)) continue
-    for (const [id, value] of Object.entries(parsed.enabledPlugins)) if (typeof value === 'boolean') result.set(id, value)
-  }
-  return result
 }
 
 async function select(candidate: Candidate, report: (source: string, message: string) => void): Promise<DiscoveredPlugin | undefined> {

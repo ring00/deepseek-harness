@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-19-per-agent-agent-claude-plugin-compatibility.md
-2026-08-19-per-agent-agent-claude-plugin-compatibility.md: d1b0682933e93092dc6364d2146e0e8cabc6af0f
-2026-08-19-per-agent-agent-claude-plugin-compatibility.zh.md: 876f46a029baa8f6b1f8d19fc0f9f1ad6310b8f8
+2026-08-19-per-agent-agent-claude-plugin-compatibility.md: 1030b9b5e3590be148114bba0d024def407f0229
+2026-08-19-per-agent-agent-claude-plugin-compatibility.zh.md: 62b4836a22180b9f72ed702e0da2efd789aaa871
